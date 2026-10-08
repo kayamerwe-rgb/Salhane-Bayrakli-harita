@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
+<title>MCP Salhane · Kontrol Paneli</title>
+<style>
+  :root {
+    --bg: #0f1418; --panel: #172027; --panel2: #1e2a33; --border: #2c3a45;
+    --text: #e8eef2; --muted: #93a4b1; --accent: #ffb547; --ok: #2ecc71; --warn: #e67e22; --bad: #e74c3c;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .alt { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+  .kart { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; }
+  .satir { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .rozet { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .acik { background: rgba(46,204,113,.15); color: var(--ok); border: 1px solid rgba(46,204,113,.45); }
+  .kapali { background: rgba(231,76,60,.12); color: var(--bad); border: 1px solid rgba(231,76,60,.45); }
+  .kilitli { background: rgba(149,165,166,.15); color: #c3cdd2; border: 1px solid rgba(149,165,166,.45); }
+  .duz { background: rgba(230,126,34,.15); color: var(--warn); border: 1px solid rgba(230,126,34,.45); }
+  button, select { font: inherit; font-size: 13px; border-radius: 7px; border: 1px solid var(--border); background: var(--panel2); color: var(--text); padding: 5px 10px; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.ana { background: var(--accent); color: #1a1a1a; border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: .5; cursor: wait; }
+  .tablo-kap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 820px; }
+  th, td { text-align: left; padding: 8px 8px; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: middle; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  td.kod { font-weight: 700; }
+  .kucuk { color: var(--muted); font-size: 12px; }
+  #mesaj { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--accent); color: #1a1a1a; padding: 8px 16px; border-radius: 8px; font-weight: 600; display: none; z-index: 10; }
+  .uyari { border-left: 3px solid var(--warn); padding-left: 10px; color: var(--muted); font-size: 12.5px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>MCP Salhane · Kontrol Paneli</h1>
+  <div class="alt">Bu sayfanın linki yalnızca sizindir; kimseyle paylaşmayın.</div>
+
+  <div id="hata" class="kart" style="display:none;"></div>
+
+  <div class="kart">
+    <div class="satir">
+      <b>Kayıt sistemi:</b> <span id="kayitDurum" class="rozet">…</span>
+      <button id="kayitBtn" style="margin-left:auto;">…</button>
+    </div>
+    <div class="uyari" style="margin-top:10px;">Kapalıyken sunucu hiçbir katılımcı kaydını kabul etmez; katılımcı linkleri açılır ama yanıtlar yalnızca katılımcının cihazında bekler. Veri toplama günü açın.</div>
+  </div>
+
+  <div class="kart">
+    <div class="satir" style="margin-bottom:8px;">
+      <b>Katılımcılar</b>
+      <span class="kucuk" id="ozet"></span>
+      <button id="yenileBtn" style="margin-left:auto;">↻ Yenile</button>
+    </div>
+    <div class="tablo-kap">
+      <table>
+        <thead><tr>
+          <th>Kod</th><th>Durum</th><th>Faz 1</th><th>Faz 2</th><th>Son kayıt</th><th>Uygulama modu</th><th>Link</th><th>İşlem</th>
+        </tr></thead>
+        <tbody id="govde"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="kart">
+    <div class="satir"><b>Test linki</b> <span class="kucuk">Kayıt sistemi kapalıyken de çalışır; yalnızca TEST_ önekli sekmelere yazar, asıl veriye karışmaz.</span></div>
+    <div class="satir" style="margin-top:8px;" id="testSatir"></div>
+  </div>
+
+  <div class="kart">
+    <div class="satir"><b>Analiz tablosu</b> <button id="analizBtn" style="margin-left:auto;">Nihai analiz tablolarını oluştur</button></div>
+    <div class="uyari" style="margin-top:10px;">Her katılımcı ve seçenek için en son geçerli yanıtı (katılımcının kendi yanıtı ya da sizin düzeltmeniz) tek satırda birleştirir; "Duzeltme_Iceriyor" sütunu hangilerinin düzeltildiğini gösterir. Asıl kayıtlar ve tüm sürümler olduğu gibi kalır.</div>
+    <div class="kucuk" id="analizSonuc" style="margin-top:6px;"></div>
+  </div>
+</main>
+<div id="mesaj"></div>
+<script>
+const API = 'https://script.google.com/macros/s/AKfycbzELoXXBiZnMqcc7-sDlqv68IffMtdj0BXMOEqAf0_eh4NsAZV7bejd9htJG96z0x7N/exec';
+const Y = new URLSearchParams(location.search).get('y') || '';
+let veri = null;
+
+function mesaj(m) {
+  const el = document.getElementById('mesaj');
+  el.textContent = m; el.style.display = 'block';
+  clearTimeout(el._t); el._t = setTimeout(() => { el.style.display = 'none'; }, 2600);
+}
+function hata(m) {
+  const el = document.getElementById('hata');
+  el.style.display = 'block'; el.innerHTML = '<b style="color:var(--bad)">' + m + '</b>';
+}
+async function api(params) {
+  const q = new URLSearchParams(Object.assign({ a: Y }, params)).toString();
+  const r = await fetch(API + '?' + q);
+  return r.json();
+}
+function zaman(iso) {
+  if (!iso) return '<span class="kucuk">—</span>';
+  const d = new Date(iso);
+  return d.toLocaleDateString('tr-TR') + ' ' + d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+}
+function katilimciLinki(k) { return veri.siteUrl + '?k=' + k.anahtar; }
+function duzeltLinki(k) { return veri.siteUrl + '?y=' + encodeURIComponent(Y) + '&kk=' + k.kod; }
+async function kopyala(metin) {
+  try { await navigator.clipboard.writeText(metin); mesaj('Link kopyalandı'); }
+  catch (e) { prompt('Linki kopyalayın:', metin); }
+}
+
+function ciz() {
+  const acik = veri.kayitAcik;
+  const kd = document.getElementById('kayitDurum');
+  kd.textContent = acik ? 'AÇIK' : 'KAPALI';
+  kd.className = 'rozet ' + (acik ? 'acik' : 'kapali');
+  const kb = document.getElementById('kayitBtn');
+  kb.textContent = acik ? 'Kayıt sistemini kapat' : 'Kayıt sistemini aç';
+  kb.className = acik ? '' : 'ana';
+  kb.onclick = () => {
+    const soru = acik
+      ? 'Kayıt sistemi kapatılacak. Katılımcılar artık yanıt kaydedemeyecek. Emin misiniz?'
+      : 'Kayıt sistemi açılacak. Bu andan itibaren katılımcı linklerinden gelen yanıtlar tabloya kaydedilecek. Emin misiniz?';
+    if (confirm(soru)) islem({ op: acik ? 'kayitKapat' : 'kayitAc' });
+  };
+
+  let basladi = 0, kilitli = 0;
+  const g = document.getElementById('govde');
+  g.innerHTML = '';
+  veri.katilimcilar.forEach(k => {
+    if (k.surum > 0) basladi++;
+    if (k.kilitli) kilitli++;
+    const tr = document.createElement('tr');
+    const durum = k.kilitli ? '<span class="rozet kilitli">Kilitli</span>'
+      : (k.surum > 0 ? '<span class="rozet acik">Açık</span>' : '<span class="kucuk">Başlamadı</span>');
+    const duzRozet = k.sonKaynak === 'arastirmaci_duzeltmesi' ? ' <span class="rozet duz" title="Son sürüm araştırmacı düzeltmesi">düzeltildi</span>' : '';
+    tr.innerHTML =
+      '<td class="kod">' + k.kod + '</td>' +
+      '<td>' + durum + duzRozet + '</td>' +
+      '<td>' + k.nFaz1 + ' / 16</td>' +
+      '<td>' + k.nFaz2 + ' / 16</td>' +
+      '<td>' + zaman(k.sonKayit) + (k.surum ? '<div class="kucuk">sürüm ' + k.surum + '</div>' : '') + '</td>' +
+      '<td><select data-mod="' + k.kod + '"><option value="">—</option><option value="yuz_yuze">Yüz yüze</option><option value="cevrimici">Çevrimiçi</option></select></td>' +
+      '<td><button data-kopya="' + k.kod + '">Linki kopyala</button></td>' +
+      '<td><div class="satir" style="gap:6px;">' +
+        '<button data-kilit="' + k.kod + '">' + (k.kilitli ? 'Kilidi aç' : 'Kilitle') + '</button>' +
+        '<button data-duzelt="' + k.kod + '">Düzelt</button>' +
+      '</div></td>';
+    g.appendChild(tr);
+    tr.querySelector('select').value = k.mod || '';
+  });
+  document.getElementById('ozet').textContent = basladi + ' başladı · ' + kilitli + ' kilitli · ' + veri.katilimcilar.length + ' link';
+
+  g.querySelectorAll('[data-kopya]').forEach(b => b.onclick = () => kopyala(katilimciLinki(veri.katilimcilar.find(k => k.kod === b.dataset.kopya))));
+  g.querySelectorAll('[data-duzelt]').forEach(b => b.onclick = () => window.open(duzeltLinki(veri.katilimcilar.find(k => k.kod === b.dataset.duzelt)), '_blank', 'noopener'));
+  g.querySelectorAll('[data-kilit]').forEach(b => b.onclick = () => {
+    const k = veri.katilimcilar.find(x => x.kod === b.dataset.kilit);
+    if (k.kilitli) {
+      if (confirm(k.kod + ' oturumunun kilidi açılacak; katılımcı yeniden değişiklik yapabilecek. Emin misiniz?')) islem({ op: 'ac', kk: k.kod });
+    } else {
+      if (confirm(k.kod + ' oturumu kilitlenecek; katılımcı artık değişiklik yapamayacak. Emin misiniz?')) islem({ op: 'kilitle', kk: k.kod });
+    }
+  });
+  g.querySelectorAll('[data-mod]').forEach(s => s.onchange = () => islem({ op: 'mod', kk: s.dataset.mod, deger: s.value }));
+
+  const t = veri.test;
+  document.getElementById('testSatir').innerHTML =
+    '<button id="testKopya">Test linkini kopyala</button><button id="testAc">Test linkini aç</button>' +
+    '<span class="kucuk">Son test kaydı: ' + zaman(t.sonKayit) + '</span>';
+  document.getElementById('testKopya').onclick = () => kopyala(katilimciLinki(t));
+  document.getElementById('testAc').onclick = () => window.open(katilimciLinki(t), '_blank', 'noopener');
+}
+
+async function yukle() {
+  if (!Y) { hata('Bu sayfa yalnızca size verilen özel linkle açılır.'); return; }
+  try {
+    const r = await api({ action: 'panel' });
+    if (!r.ok) { hata(r.error === 'yetkisiz' ? 'Link geçersiz.' : 'Hata: ' + r.error); return; }
+    veri = r; ciz();
+  } catch (e) { hata('Sunucuya bağlanılamadı. Sayfayı yenileyin.'); }
+}
+async function islem(p) {
+  document.querySelectorAll('button, select').forEach(b => b.disabled = true);
+  try {
+    const r = await api(Object.assign({ action: 'panelIslem' }, p));
+    if (!r.ok) { mesaj('Hata: ' + r.error); }
+    else if (r.analiz) {
+      const a = r.analiz;
+      document.getElementById('analizSonuc').textContent = 'Oluşturuldu · Faz 1: ' + (a.faz1 || 0) + ' satır, Faz 2: ' + (a.faz2 || 0) + ' satır, PRE: ' + (a.pre || 0) + ', POST: ' + (a.post || 0) + ' · ' + new Date().toLocaleTimeString('tr-TR');
+      mesaj('Analiz tabloları oluşturuldu');
+    } else { veri = r; ciz(); mesaj('Kaydedildi'); }
+  } catch (e) { mesaj('Bağlantı hatası'); }
+  document.querySelectorAll('button, select').forEach(b => b.disabled = false);
+}
+document.getElementById('yenileBtn').onclick = yukle;
+document.getElementById('analizBtn').onclick = () => islem({ op: 'analiz' });
+yukle();
+</script>
+</body>
+</html>
