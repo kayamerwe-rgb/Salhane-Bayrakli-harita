@@ -2671,7 +2671,12 @@ function saveSurveyDraftLocal(code, app, data) {
 // çizimde yalnızca innerHTML ile değiştiği için, gövde üzerine TEK SEFERLİK
 // eklenen bu delege edilmiş dinleyici her tıklamada bilgi penceresini açar.
 document.getElementById('surveyBody').addEventListener('click', () => {
-  showInfoModal(SURVEY_LOCK_MESSAGE, buildSurveyScaleReminder());
+  // Kolaylaştırıcı isteğiyle: bu kilit mesajı yalnızca GERÇEK veri toplama
+  // modunda gösterilir. DENEME modunda anket gerçekten doldurulabilir
+  // olduğundan (bkz. renderSurveyPanel), burada hiçbir şey yapılmaz.
+  if (getRecordingMode() === 'real') {
+    showInfoModal(SURVEY_LOCK_MESSAGE, buildSurveyScaleReminder());
+  }
 });
 
 function initSurveyForParticipant() {
@@ -2692,8 +2697,16 @@ function renderSurveyPanel() {
     bodyEl.innerHTML = '';
     return;
   }
+  // Kolaylaştırıcı isteğiyle: DENEME modunda (danışmanla/ekiple deneme amaçlı
+  // test için) bu anket gerçekten doldurulabilir; cevaplar yalnızca bu
+  // tarayıcıda (localStorage) saklanır, hiçbir yere gönderilmez. GERÇEK veri
+  // toplama modunda ise protokol gereği anket yalnızca görüntülenir — cevaplar
+  // yüz yüze görüşme sırasında Merve Kaya tarafından ayrıca kaydedilir.
+  const interactive = getRecordingMode() !== 'real';
+
   statusEl.innerHTML = 'Katılımcı: <b style="color:var(--text)">' + activeParticipantCode + '</b>'
-    + (surveyDraft.submitted ? ' · <span style="color:#2ecc71;">✓ gönderildi</span>' : '');
+    + (surveyDraft.submitted ? ' · <span style="color:#2ecc71;">✓ gönderildi</span>' : '')
+    + (interactive ? ' · <span style="color:var(--accent2);">✎ Deneme modu — doldurulabilir, yalnızca bu tarayıcıda saklanır</span>' : '');
 
   bodyEl.innerHTML = '';
 
@@ -2706,10 +2719,18 @@ function renderSurveyPanel() {
       const wrap = document.createElement('div');
       wrap.className = 'surveyItem';
       const scaleHtml = SURVEY_SCALE.map(s =>
-        '<label><input type="radio" name="q' + item.no + '" value="' + s.v + '" style="pointer-events:none;" tabindex="-1" ' +
+        '<label><input type="radio" name="q' + item.no + '" value="' + s.v + '"' + (interactive ? '' : ' style="pointer-events:none;" tabindex="-1"') + ' ' +
         (String(surveyDraft.answers['q' + item.no]) === String(s.v) ? 'checked' : '') + '>' + s.v + '</label>'
       ).join('');
       wrap.innerHTML = '<div class="q"><b>' + item.no + '.</b> ' + item.text + '</div><div class="surveyScale">' + scaleHtml + '</div>';
+      if (interactive) {
+        wrap.querySelectorAll('input[type="radio"]').forEach(inp => {
+          inp.addEventListener('change', () => {
+            surveyDraft.answers['q' + item.no] = inp.value;
+            saveSurveyDraftLocal(activeParticipantCode, surveyApplication, surveyDraft);
+          });
+        });
+      }
       bodyEl.appendChild(wrap);
     });
   });
@@ -2726,8 +2747,15 @@ function renderSurveyPanel() {
       const ta = document.createElement('textarea');
       ta.className = 'faz1Textarea';
       ta.value = surveyDraft.openAnswers['o' + (i + 1)] || '';
-      ta.style.pointerEvents = 'none';
-      ta.tabIndex = -1;
+      if (interactive) {
+        ta.addEventListener('input', () => {
+          surveyDraft.openAnswers['o' + (i + 1)] = ta.value;
+          saveSurveyDraftLocal(activeParticipantCode, surveyApplication, surveyDraft);
+        });
+      } else {
+        ta.style.pointerEvents = 'none';
+        ta.tabIndex = -1;
+      }
       wrap.appendChild(ta);
       bodyEl.appendChild(wrap);
     });
@@ -2745,22 +2773,52 @@ function renderSurveyPanel() {
       sel.innerHTML = '<option value="">— seçiniz —</option>' +
         DATA.optionCatalog.map(o => '<option value="' + o.code + '">' + o.code + ' — ' + o.name + '</option>').join('');
       sel.value = (surveyDraft.priorities[i] && surveyDraft.priorities[i].code) || '';
-      sel.style.pointerEvents = 'none';
-      sel.tabIndex = -1;
       const ta = document.createElement('textarea');
       ta.className = 'faz1Textarea';
       ta.placeholder = 'Kısa seçme nedeni...';
       ta.value = (surveyDraft.priorities[i] && surveyDraft.priorities[i].reason) || '';
-      ta.style.pointerEvents = 'none';
-      ta.tabIndex = -1;
+      if (interactive) {
+        sel.addEventListener('change', () => {
+          if (!surveyDraft.priorities[i]) surveyDraft.priorities[i] = {};
+          surveyDraft.priorities[i].code = sel.value;
+          saveSurveyDraftLocal(activeParticipantCode, surveyApplication, surveyDraft);
+        });
+        ta.addEventListener('input', () => {
+          if (!surveyDraft.priorities[i]) surveyDraft.priorities[i] = {};
+          surveyDraft.priorities[i].reason = ta.value;
+          saveSurveyDraftLocal(activeParticipantCode, surveyApplication, surveyDraft);
+        });
+      } else {
+        sel.style.pointerEvents = 'none';
+        sel.tabIndex = -1;
+        ta.style.pointerEvents = 'none';
+        ta.tabIndex = -1;
+      }
       wrap.appendChild(sel);
       wrap.appendChild(ta);
       bodyEl.appendChild(wrap);
     }
   }
-  // Kolaylaştırıcı isteğiyle: bu anket haritada yalnızca incelenir; "Anketi
-  // gönder" düğmesi ve gönderim mantığı kasıtlı olarak yoktur (bkz. #surveyBody
-  // üzerindeki delege edilmiş tıklama dinleyicisi — SURVEY_LOCK_MESSAGE).
+
+  if (interactive) {
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'faz1Btn primary';
+    saveBtn.style.cssText = 'width:100%; margin-top:14px;';
+    saveBtn.textContent = surveyDraft.submitted ? '✓ Taslak kaydedildi — tekrar kaydet' : 'Taslağı Kaydet';
+    saveBtn.addEventListener('click', () => {
+      surveyDraft.submitted = true;
+      saveSurveyDraftLocal(activeParticipantCode, surveyApplication, surveyDraft);
+      renderSurveyPanel();
+    });
+    bodyEl.appendChild(saveBtn);
+  }
+
+  // Kolaylaştırıcı isteğiyle: GERÇEK veri toplama modunda bu anket haritada
+  // yalnızca incelenir, doldurulamaz; "Anketi gönder" düğmesi ve gönderim
+  // mantığı o modda kasıtlı olarak yoktur (bkz. #surveyBody üzerindeki delege
+  // edilmiş tıklama dinleyicisi — SURVEY_LOCK_MESSAGE, yalnızca gerçek modda
+  // tetiklenir). DENEME modunda ise anket yukarıdaki gibi tamamen doldurulabilir.
 }
 
 document.getElementById('surveyPreBtn').addEventListener('click', () => {
