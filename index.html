@@ -264,10 +264,10 @@
       <div id="pcComposition" style="margin-top:6px; font-size:10.5px; color:var(--muted); line-height:1.5;"></div>
       <div id="pcRosterStatus" style="margin-top:8px;"></div>
     </div>
-    <div class="section-label" id="overlayToggle" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; padding-right:16px;">
-      <span>Referans katmanlar</span><span id="overlayChevron" style="transition:transform .15s;">▸</span>
+    <div class="section-label" id="overlayToggle" style="display:flex; align-items:center; justify-content:space-between; padding-right:16px;">
+      <span>Referans katmanlar</span>
     </div>
-    <div id="overlayControls" style="display:none; padding: 4px 16px 12px;"></div>
+    <div id="overlayControls" style="display:block; padding: 4px 16px 12px;"></div>
 
     <div class="section-label" id="chapterToggle" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; padding-right:16px;">
       <span>Güzergah Klipleri</span><span id="chapterChevron" style="transition:transform .15s;">▸</span>
@@ -418,6 +418,25 @@ function renderIntroOverlay() {
   });
 }
 
+// Kolaylaştırıcı isteğiyle: "Opsiyonları Keşfediniz" ekranındaki A-W seçenek
+// videoları oynatılmaya başlar başlamaz büyük ekrana (fullscreen) geçer;
+// tarayıcının kendi tam ekran modundan ESC ile çıkmak videoyu durdurur.
+function handleOptionVideoPlay(videoEl) {
+  if (videoEl.dataset.fsWired !== '1') {
+    videoEl.dataset.fsWired = '1';
+    const exitHandler = () => {
+      if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+        videoEl.pause();
+      }
+    };
+    document.addEventListener('fullscreenchange', exitHandler);
+    document.addEventListener('webkitfullscreenchange', exitHandler);
+  }
+  if (document.fullscreenElement === videoEl || document.webkitFullscreenElement === videoEl) return;
+  const req = videoEl.requestFullscreen || videoEl.webkitRequestFullscreen || videoEl.webkitEnterFullscreen || videoEl.mozRequestFullScreen || videoEl.msRequestFullscreen;
+  if (req) { try { req.call(videoEl); } catch (e) {} }
+}
+
 function renderWelcomeScreen() {
   const w = DATA.welcome;
   const posterEl = document.getElementById('welcomePoster');
@@ -443,9 +462,9 @@ function renderWelcomeScreen() {
       : '📷';
     const posterAttr = media.photo ? ' poster="' + media.photo + '"' : '';
     const videoHtml = videoSrc
-      ? '<video controls controlsList="nodownload noremoteplayback" disablePictureInPicture oncontextmenu="return false" preload="metadata" playsinline' + posterAttr + '><source src="' + videoSrc + '" type="video/mp4">Tarayıcınız video oynatmayı desteklemiyor.</video>'
+      ? '<video controls controlsList="nodownload noremoteplayback" disablePictureInPicture oncontextmenu="return false" preload="metadata" playsinline' + posterAttr + ' onplay="handleOptionVideoPlay(this)"><source src="' + videoSrc + '" type="video/mp4">Tarayıcınız video oynatmayı desteklemiyor.</video>'
       : (media.youtubeId
-        ? '<iframe src="https://www.youtube.com/embed/' + media.youtubeId + '" title="' + o.code + ' tanıtım videosu" allowfullscreen loading="lazy"></iframe>'
+        ? '<iframe src="https://www.youtube.com/embed/' + media.youtubeId + '" title="' + o.code + ' tanıtım videosu" allow="autoplay; fullscreen" allowfullscreen loading="lazy"></iframe>'
         : '<div class="welcomeOptVideo">Kısa tanıtım videosu eklenecek</div>');
     card.innerHTML = `
       <div class="welcomeOptPhoto">${photoHtml}</div>
@@ -828,6 +847,7 @@ function playFileYoutube(kind, v, file, offsetSec) {
       document.getElementById(ids.yt).style.display = 'block';
       existing.mute();
       existing.loadVideoById({ videoId: v.yt, startSeconds: offsetSec });
+      existing.playVideo();
       beginYtTracking(kind, v);
       return;
     }
@@ -1171,13 +1191,8 @@ DATA.overlayLayers.forEach(layerDef => {
   overlayInstances[layerDef.id] = inst;
 });
 
-document.getElementById('overlayToggle').addEventListener('click', () => {
-  const box = document.getElementById('overlayControls');
-  const chevron = document.getElementById('overlayChevron');
-  const open = box.style.display !== 'none';
-  box.style.display = open ? 'none' : 'block';
-  chevron.style.transform = open ? 'rotate(0deg)' : 'rotate(90deg)';
-});
+// Kolaylaştırıcı isteğiyle: "Referans katmanlar" artık açılır/kapanır değil,
+// her zaman açık/görünür kalıyor (bkz. yukarıdaki overlayControls display:block).
 
 const overlayControlsEl = document.getElementById('overlayControls');
 DATA.overlayLayers.forEach(layerDef => {
@@ -1571,6 +1586,57 @@ map.on('click', (e) => {
 const GOOGLE_MAPS_EMBED_API_KEY = 'AIzaSyCXVysYJMmlr5pf9kNuXFBINdtSDFmQgBs';
 let panoArmed = false;
 
+// ---- Panorama yön oku: harita üzerinde panoramanın açıldığı konumu ve
+// (yaklaşık) bakış yönünü gösteren dönebilen bir ok ----
+// Not: ücretsiz Google Maps Embed API (iframe tabanlı) katılımcı panorama
+// içinde sürüklediği/döndürdüğü anki açıyı canlı okumaya izin vermiyor —
+// bu yüzden ok, panorama AÇILDIĞI ANDA rotanın o noktadaki genel ilerleme
+// yönüne göre hesaplanıp sabitleniyor (hem okun hem de panoramanın ilk
+// bakış açısının eşleşmesi için aynı değer Street View'a da gönderiliyor).
+let panoMarker = null;
+function panoArrowIcon(headingDeg) {
+  return L.divIcon({
+    className: '',
+    html: '<div style="width:34px;height:34px;display:flex;align-items:center;justify-content:center;transform:rotate(' + headingDeg + 'deg);filter:drop-shadow(0 1px 3px rgba(0,0,0,.6));">' +
+            '<svg width="28" height="28" viewBox="0 0 24 24"><path d="M12 2 L19 21 L12 17 L5 21 Z" fill="#2ecc71" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"/></svg>' +
+          '</div>',
+    iconSize: [34, 34], iconAnchor: [17, 17]
+  });
+}
+function bearingDeg(lat1, lon1, lat2, lon2) {
+  const toRad = d => d * Math.PI / 180;
+  const y = Math.sin(toRad(lon2 - lon1)) * Math.cos(toRad(lat2));
+  const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) - Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(toRad(lon2 - lon1));
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+function headingFromArray(arr, lat, lon) {
+  if (!arr.length) return null;
+  let bestIdx = 0, bestD = Infinity;
+  for (let i = 0; i < arr.length; i++) {
+    const p = arr[i];
+    const dLat = p.lat - lat, dLon = (p.lon - lon) * Math.cos(lat * Math.PI / 180);
+    const d = dLat * dLat + dLon * dLon;
+    if (d < bestD) { bestD = d; bestIdx = i; }
+  }
+  const LOOKAHEAD = 5;
+  const a = arr[bestIdx];
+  let b = arr[Math.min(arr.length - 1, bestIdx + LOOKAHEAD)];
+  if (!b || (b.lat === a.lat && b.lon === a.lon)) {
+    b = arr[Math.max(0, bestIdx - LOOKAHEAD)];
+    if (b && !(b.lat === a.lat && b.lon === a.lon)) return { heading: bearingDeg(b.lat, b.lon, a.lat, a.lon), dist: bestD };
+    return null;
+  }
+  return { heading: bearingDeg(a.lat, a.lon, b.lat, b.lon), dist: bestD };
+}
+function estimateHeadingAt(lat, lon) {
+  const bike = headingFromArray(routePoints, lat, lon);
+  const car = headingFromArray(carRoutePoints, lat, lon);
+  if (bike && car) return bike.dist <= car.dist ? bike.heading : car.heading;
+  if (bike) return bike.heading;
+  if (car) return car.heading;
+  return null;
+}
+
 function setPanoOpen(open) {
   const wrap = document.getElementById('panoWrap');
   if (open) { setVideoOpen(false); wrap.style.display = 'flex'; }
@@ -1578,6 +1644,7 @@ function setPanoOpen(open) {
   if (!open) {
     wrap.style.display = 'none';
     document.getElementById('panoFrame').src = 'about:blank';
+    if (panoMarker) { map.removeLayer(panoMarker); panoMarker = null; }
   }
 }
 
@@ -1586,8 +1653,16 @@ function openPanoramaAt(lat, lon) {
     alert('Panoramik görünüm için henüz bir Google Maps API anahtarı tanımlanmadı.');
     return;
   }
+  const heading = estimateHeadingAt(lat, lon);
   const frame = document.getElementById('panoFrame');
-  frame.src = 'https://www.google.com/maps/embed/v1/streetview?key=' + encodeURIComponent(GOOGLE_MAPS_EMBED_API_KEY) + '&location=' + lat + ',' + lon;
+  frame.src = 'https://www.google.com/maps/embed/v1/streetview?key=' + encodeURIComponent(GOOGLE_MAPS_EMBED_API_KEY) + '&location=' + lat + ',' + lon + (heading != null ? '&heading=' + Math.round(heading) : '');
+  const headingForIcon = heading != null ? heading : 0;
+  if (!panoMarker) {
+    panoMarker = L.marker([lat, lon], { icon: panoArrowIcon(headingForIcon), zIndexOffset: 1200, interactive: false }).addTo(map);
+  } else {
+    panoMarker.setLatLng([lat, lon]);
+    panoMarker.setIcon(panoArrowIcon(headingForIcon));
+  }
   setPanoOpen(true);
 }
 
