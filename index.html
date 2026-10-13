@@ -47,10 +47,6 @@
      %50'sini kaplayan bir panele dönüşüyor; harita her zaman altta durduğu
      için değişmeden görünür kalıyor. */
   .videoPaneExpanded { position:fixed !important; top:0 !important; left:0 !important; right:auto !important; width:100vw !important; height:50vh !important; z-index:2500; background:#05080a; box-shadow:0 6px 24px rgba(0,0,0,.6); border-bottom:2px solid #3fa9f5; display:flex !important; align-items:stretch !important; justify-content:center !important; }
-  #panoToggleBtn { position:fixed; bottom:18px; right:18px; z-index:4000; height:44px; padding:0 16px; border-radius:22px;
-    background:#fff; color:#1a1a1a; border:1px solid var(--border); box-shadow:0 2px 12px rgba(0,0,0,.4);
-    font-size:13px; font-weight:700; display:flex; align-items:center; justify-content:center; gap:6px; cursor:pointer; white-space:nowrap; }
-  #panoToggleBtn.panoArmed { background:#ff7a2f; color:#fff; box-shadow:0 2px 16px rgba(255,122,47,.6); }
   #videoBox { display:none; padding:0; }
   .videoPaneExpanded video, .videoPaneExpanded iframe { width:100% !important; height:100% !important; max-height:none !important; border-radius:0 !important; }
   .videoPaneExpanded .paneBadge { top:10px; left:14px; }
@@ -239,10 +235,9 @@
       <button id="panoCloseBtn" class="expandBtn" title="Panoramik görünümü kapat">✕ Kapat</button>
       <iframe id="panoFrame" style="width:100%; height:100%; border:0;" allowfullscreen loading="lazy"></iframe>
     </div>
-    <button id="panoToggleBtn" title="Panoramik görünüm (Street View) aç/kapa">📷 360° Panorama</button>
     <div id="legend">
       <div class="row"><span class="sw" style="background:#3fa9f5"></span> Güzergah (tıklayınca o noktanın görüntüsü açılır)</div>
-      <div class="row">📷 Sağ alttaki <b>360° Panorama</b> düğmesine basıp haritaya tıklayın — o noktanın panoramik görüntüsü açılır.</div>
+      <div class="row">📷 Üstteki <b>Panorama</b> sekmesine basıp haritaya tıklayın — o noktanın panoramik görüntüsü açılır.</div>
     </div>
   </div>
   <div id="side">
@@ -254,8 +249,8 @@
       <button id="geriDonBtn" class="faz1Btn" style="width:100%; padding:7px 10px; font-size:11.5px;" title="İlerlemenizi kaydedip tanıtım (poster ve video) sayfasına dönün">◀ Tanıtım Sayfasına Dön</button>
     </div>
     <div id="modeTabs" style="display:flex; gap:6px; padding:6px 16px; border-bottom:1px solid var(--border);">
-      <button class="modeTabBtn active" data-mode="video">🚴 Video Rota</button>
-      <button class="modeTabBtn" data-mode="faz1">📍 Faz 1: Yerleştirme</button>
+      <button id="panoModeToggleBtn" class="faz1MediaBtn" title="Panoramik görünüm (Street View) aç/kapa — açıkken güzergaha tıklayınca video yerine panorama açılır">📷 Panorama</button>
+      <button class="modeTabBtn active" data-mode="faz1">📍 Faz 1: Yerleştirme</button>
       <button class="modeTabBtn" data-mode="survey">📋 Anket</button>
       <button class="modeTabBtn" data-mode="faz2">🗳️ Faz 2: Oylama</button>
     </div>
@@ -274,18 +269,15 @@
     </div>
     <div id="overlayControls" style="display:none; padding: 4px 16px 12px;"></div>
 
-    <div id="modeVideo" style="display:flex; flex-direction:column; flex:1; min-height:0; overflow-y:auto;">
-      <div style="padding:10px 16px 6px; font-size:11.5px; color:var(--muted); line-height:1.4;">
-        Haritadaki mavi güzergahtan bir nokta seçin veya aşağıdaki klip listesinden birine tıklayın; görüntü üstte yarı ekran açılır.
-      </div>
-      <label style="display:flex; align-items:center; gap:6px; margin:0 16px 8px; font-size:10.5px; color:var(--muted); cursor:pointer;">
+    <div class="section-label" id="chapterToggle" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; padding-right:16px;">
+      <span>Güzergah Klipleri</span><span id="chapterChevron" style="transition:transform .15s;">▸</span>
+    </div>
+    <div id="chapterListsWrap" style="display:none; padding:4px 16px 12px; max-height:320px; overflow-y:auto;">
+      <div id="chapterList"></div>
+      <label style="display:flex; align-items:center; gap:6px; margin-top:8px; font-size:10.5px; color:var(--muted); cursor:pointer;">
         <input type="checkbox" id="skipStopsToggle" checked style="accent-color:#ff7a2f; width:12px; height:12px;">
         Duraklamaları atla
       </label>
-      <div id="chapterListsWrap">
-        <div class="section-label">Güzergah Klipleri</div>
-        <div id="chapterList"></div>
-      </div>
     </div>
 
     <div id="modeSurvey" style="display:none; flex-direction:column; flex:1; min-height:0; overflow:hidden;">
@@ -296,11 +288,7 @@
       <div id="surveyBody" style="flex:1; overflow-y:auto; padding:14px 16px;"></div>
     </div>
 
-    <div id="modeFaz1" style="display:none; flex-direction:column; flex:1; min-height:0; overflow:hidden;">
-      <div id="faz1MediaToggle" style="display:flex; gap:6px; padding:8px 16px; border-bottom:1px solid var(--border);">
-        <button id="faz1MediaVideoBtn" class="faz1MediaBtn active" data-media="video">🎥 Video</button>
-        <button id="faz1MediaPanoBtn" class="faz1MediaBtn" data-media="pano">📷 Panorama</button>
-      </div>
+    <div id="modeFaz1" style="display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden;">
       <div id="faz1Progress" style="padding:10px 16px; border-bottom:1px solid var(--border); font-size:12px; color:var(--muted);"></div>
       <div id="faz1OptionList" style="max-height:190px; overflow-y:auto; padding:6px 10px; border-bottom:1px solid var(--border); flex-shrink:0;"></div>
       <div id="faz1Detail" style="flex:1; overflow-y:auto; padding:14px 16px;">
@@ -1076,7 +1064,7 @@ function handleRouteClick(e) {
   // haritanın genel click dinleyicisi üzerinden yerleştirmeyi de yapar,
   // böylece katılımcı o noktanın görüntüsünü görerek yerleştirme kararı
   // verebilir. Anket ve Faz 2 modlarında rota tıklaması hâlâ pasif.
-  if (currentMode !== 'video' && currentMode !== 'faz1') return;
+  if (currentMode !== 'faz1') return;
   const lat = e.latlng.lat, lon = e.latlng.lng;
   const bp = nearestRoutePoint(lat, lon);
   const cp = nearestCarRoutePoint(lat, lon);
@@ -1589,33 +1577,30 @@ function openPanoramaAt(lat, lon) {
 
 function setPanoArmed(armed) {
   panoArmed = armed;
-  const btn = document.getElementById('panoToggleBtn');
+  const btn = document.getElementById('panoModeToggleBtn');
   if (btn) {
-    btn.classList.toggle('panoArmed', armed);
-    btn.title = armed ? 'Panoramik görünüm AÇIK — haritada bir noktaya tıklayın (kapatmak için tekrar tıklayın)' : 'Panoramik görünüm (Street View) aç/kapa';
+    btn.classList.toggle('active', armed);
+    btn.title = armed
+      ? 'Panoramik görünüm AÇIK — güzergaha tıklayınca o noktanın panoraması açılır (kapatmak için tekrar tıklayın)'
+      : 'Panoramik görünüm (Street View) aç/kapa — açıkken güzergaha tıklayınca video yerine panorama açılır';
   }
-  updateFaz1MediaToggle();
 }
-
-// Faz 1 panelindeki "🎥 Video / 📷 Panorama" seçim düğmeleri de aynı
-// panoArmed bayrağını okur/yazar — sağ alttaki yuvarlak düğmeyle birebir
-// senkron kalır, hangisine basılırsa basılsın ikisi de güncellenir.
-function updateFaz1MediaToggle() {
-  const vb = document.getElementById('faz1MediaVideoBtn');
-  const pb = document.getElementById('faz1MediaPanoBtn');
-  if (!vb || !pb) return;
-  vb.classList.toggle('active', !panoArmed);
-  pb.classList.toggle('active', panoArmed);
-}
-document.getElementById('faz1MediaVideoBtn').addEventListener('click', () => setPanoArmed(false));
-document.getElementById('faz1MediaPanoBtn').addEventListener('click', () => setPanoArmed(true));
+document.getElementById('panoModeToggleBtn').addEventListener('click', () => setPanoArmed(!panoArmed));
 
 document.getElementById('panoCloseBtn').addEventListener('click', () => {
   setPanoOpen(false);
   setPanoArmed(false);
 });
 
-document.getElementById('panoToggleBtn').addEventListener('click', () => setPanoArmed(!panoArmed));
+// "Güzergah Klipleri" listesi artık her zaman erişilebilir (ayrı bir moda
+// bağlı değil) — "Referans katmanlar" ile aynı açılır/kapanır düzen.
+document.getElementById('chapterToggle').addEventListener('click', () => {
+  const box = document.getElementById('chapterListsWrap');
+  const chevron = document.getElementById('chapterChevron');
+  const open = box.style.display !== 'none';
+  box.style.display = open ? 'none' : 'block';
+  chevron.style.transform = open ? 'rotate(0deg)' : 'rotate(90deg)';
+});
 
 // ---- Sağ panel: tek, birleşik klip listesi ----
 // Kolaylaştırıcı isteğiyle: bisiklet/araba ayrımı kaldırıldı, tek pencere/tek
@@ -1863,18 +1848,17 @@ function classifySuperblokForPoint(lat, lon) {
 
 
 // ---- Mod sekmeleri (Video Rota / PRE-POST Anket / Faz 1) ----
-let currentMode = 'video';
+let currentMode = 'faz1';
 document.querySelectorAll('#modeTabs .modeTabBtn').forEach(btn => {
   btn.addEventListener('click', () => {
     if (btn.dataset.mode === 'faz2') { showInfoModal(FAZ2_LOCK_MESSAGE); return; }
     if (btn.dataset.mode === currentMode) return;
     currentMode = btn.dataset.mode;
     document.querySelectorAll('#modeTabs .modeTabBtn').forEach(b => b.classList.toggle('active', b === btn));
-    document.getElementById('modeVideo').style.display = currentMode === 'video' ? 'flex' : 'none';
     document.getElementById('modeSurvey').style.display = currentMode === 'survey' ? 'flex' : 'none';
     document.getElementById('modeFaz1').style.display = currentMode === 'faz1' ? 'flex' : 'none';
     document.getElementById('modeFaz2').style.display = currentMode === 'faz2' ? 'flex' : 'none';
-    document.getElementById('participantBar').style.display = currentMode === 'video' ? 'none' : 'block';
+    document.getElementById('participantBar').style.display = 'block';
     if (currentMode !== 'faz1' && currentMode !== 'faz2') {
       disarmFaz1Placement();
     }
