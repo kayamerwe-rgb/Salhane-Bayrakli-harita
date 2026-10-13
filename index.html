@@ -897,6 +897,22 @@ function beginYtTracking(kind, v) {
   }, 250);
 }
 
+// Kolaylaştırıcı isteğiyle: GÜZERGAH video oynatıcısında (#player) ses zaten
+// kalıcı olarak kapalı (muted/volume=0, aşağıdaki playFile/playFileCar
+// içinde onvolumechange ile sürekli yeniden zorlanıyor) — buna ek olarak,
+// dosyanın kendi içinde gömülü bir altyazı/caption parçası (text track)
+// varsa bile bu asla görünmesin diye her track anında 'disabled' yapılır.
+// Bu güvenlik yalnızca #player içindir; seçenek kartlarındaki (A-W) tanıtım
+// videoları ve giriş ekranı videosu bundan ETKİLENMEZ, onlarda ses açık kalır.
+(function () {
+  const p = document.getElementById('player');
+  if (!p) return;
+  const disableAllTracks = () => { for (const t of p.textTracks) t.mode = 'disabled'; };
+  disableAllTracks();
+  p.textTracks.addEventListener('addtrack', disableAllTracks);
+  p.addEventListener('loadedmetadata', disableAllTracks);
+})();
+
 function playFile(file, offsetSec) {
   const v = videosByFile[file];
   if (!v) return;
