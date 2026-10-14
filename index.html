@@ -2026,6 +2026,11 @@ document.querySelectorAll('#modeTabs .modeTabBtn').forEach(btn => {
     if (currentMode === 'faz2' && activeParticipantCode) initFaz2ForParticipant();
   });
 });
+// Sayfa ilk yüklendiğinde currentMode zaten 'faz1' (yukarıda varsayılan
+// olarak atanıyor) — yani bir sekmeye TIKLANMASI hiç gerekmeyebilir ve
+// yukarıdaki tıklama dinleyicisi hiç çalışmayabilir. Bu yüzden katılımcı
+// kodu çubuğu burada da, sayfa açılışında, ayrıca görünür yapılıyor.
+document.getElementById('participantBar').style.display = 'block';
 
 // Kolaylaştırıcı isteğiyle: haritada güzergâh noktalarını numaralı, renkli
 // işaretçilerle gösteren katman tümüyle kaldırıldı (bazı noktaların konumu
