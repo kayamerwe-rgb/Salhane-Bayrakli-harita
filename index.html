@@ -709,6 +709,14 @@ document.addEventListener('keydown', (e) => {
   // Kolaylaştırıcı isteğiyle: bir opsiyon "elde" (yerleştirme için
   // silahlanmış) haldeyken ESC, o opsiyonu yerleştirmeden geri bırakır.
   if (typeof faz1PlacementArmed !== 'undefined' && faz1PlacementArmed) disarmFaz1Placement();
+  // Faz 1 soru sihirbazı açıksa ESC onu da kapatır — tıpkı "Kapat" butonunda
+  // olduğu gibi, o ana kadar girilen cevap önce taslağa (faz1Draft) işlenir,
+  // böylece daha sonra aynı seçeneğe dönüldüğünde kaybolmaz.
+  const faz1WizOverlay = document.getElementById('faz1WizardOverlay');
+  if (faz1WizOverlay && faz1WizOverlay.style.display !== 'none') {
+    faz1WizardCommitCurrentStep();
+    closeFaz1Wizard();
+  }
 });
 
 // ---- Bisiklet/Araba bölmeleri arasında elle duraklatma davranışı ----
@@ -1567,7 +1575,11 @@ customVideos.filter(function(entry){ return !_bakedVideoIds[entry.id]; }).forEac
 // haritaya tıklamanın artık hiçbir etkisi yoktur.
 map.on('click', (e) => {
   if (panoArmed) { openPanoramaAt(e.latlng.lat, e.latlng.lng); return; }
-  handleRouteClick(e); // video/faz1 modlarında her tıklamada en yakın görüntüyü dener
+  // Kullanıcı isteği: bir opsiyon yerleştirmek üzere "silahlanmış" haldeyken
+  // yapılan tıklama SADECE yerleştirme yapar — route/video oynatma denemesi
+  // (handleRouteClick) bu durumda hiç çalıştırılmaz. Önceden bu kontrol
+  // handleRouteClick'ten SONRA yapıldığı için, yerleştirme noktası bir rota
+  // noktasına denk geldiğinde istenmeden video da açılabiliyordu.
   if (currentMode === 'faz1' && faz1PlacementArmed) {
     const lat = e.latlng.lat, lon = e.latlng.lng;
     if (!pointInPolygon(lat, lon, DATA.studyAreaBounds)) {
@@ -1576,7 +1588,9 @@ map.on('click', (e) => {
     }
     const sb = classifySuperblokForPoint(lat, lon);
     setFaz1Placement(lat, lon, 'serbest', null, sb);
+    return;
   }
+  handleRouteClick(e); // video/faz1 modlarında her tıklamada en yakın görüntüyü dener
 });
 
 // ---- Panoramik görünüm (Google Street View, Maps JavaScript API) ----
@@ -2373,11 +2387,20 @@ function renderFaz1OptionList() {
   });
 }
 
-// Bir seçeneğin taslak (faz1Draft) verisini, kayıtlı bir cevabı varsa ondan,
-// yoksa boş değerlerle kurar. Hem listeden tıklayarak seçme hem de "Tut ve
-// Bırak" ile sürükleyerek yerleştirme aynı bu fonksiyonu kullanır.
+// Bir seçeneğin taslak (faz1Draft) verisini kurar. Hem listeden tıklayarak
+// seçme hem de "Tut ve Bırak" ile sürükleyerek yerleştirme aynı bu
+// fonksiyonu kullanır.
+// Kullanıcı isteği: aynı seçenek üzerinde çalışırken anket/sihirbaz kapatılıp
+// (örn. bir video izlemek için) sonra TEKRAR aynı seçeneğe dönüldüğünde, henüz
+// KAYDEDİLMEMİŞ cevaplar da dahil kaldığı yerden devam edilebilsin. Bu yüzden
+// zaten bu seçenek üzerinde bir taslak varsa (faz1Draft.optionCode === code),
+// onu faz1Answers'taki -sadece KAYDEDİLMİŞ- kayıttan yeniden kurup üzerine
+// YAZMIYORUZ; sadece gerçekten BAŞKA bir seçeneğe geçilirken (ya da bu
+// seçeneğin kaydedilmiş/hiç başlanmamış ilk açılışında) kayıtlı cevaptan
+// (varsa) veya boş değerlerden yeniden kuruyoruz.
 function beginFaz1OptionDraft(code) {
   if (!activeParticipantCode) { alert('Önce katılımcı kodunu belirleyin.'); return false; }
+  if (faz1Draft && faz1Draft.optionCode === code) return true;
   const existing = faz1Answers[code];
   faz1Draft = {
     optionCode: code,
@@ -2518,7 +2541,10 @@ function updateFaz1PlacementMarker() {
   // 'serbest' olarak güncellenir (artık 10 sabit noktadan biri olması
   // gerekmiyor, tıpkı serbest tıklamada olduğu gibi).
   const icon = L.divIcon({ className: '', html: '<div style="background:#ff7a2f;color:#2a1200;width:22px;height:22px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid #fff;box-shadow:0 1px 6px rgba(0,0,0,.5); cursor:grab; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:11px;"><span style="transform:rotate(45deg);">' + (faz1Draft.optionCode || '') + '</span></div>', iconSize: [22, 22], iconAnchor: [11, 22] });
-  faz1PlacementMarker = L.marker([pl.lat, pl.lon], { icon, zIndexOffset: 1200, draggable: true, autoPan: true }).addTo(map);
+  // bubblingMouseEvents:false -> bu işaretçiye tıklamak, altındaki haritanın
+  // kendi 'click' olayını (ve onun üzerinden video/rota deneme mantığını)
+  // TETİKLEMEZ; aşağıdaki kendi 'click' dinleyicisi tek başına çalışır.
+  faz1PlacementMarker = L.marker([pl.lat, pl.lon], { icon, zIndexOffset: 1200, draggable: true, autoPan: true, bubblingMouseEvents: false }).addTo(map);
   faz1PlacementMarker.on('dragend', () => {
     const ll = faz1PlacementMarker.getLatLng();
     if (!pointInPolygon(ll.lat, ll.lng, DATA.studyAreaBounds)) {
@@ -2528,6 +2554,12 @@ function updateFaz1PlacementMarker() {
     }
     const sb = classifySuperblokForPoint(ll.lat, ll.lng);
     setFaz1Placement(ll.lat, ll.lng, 'serbest', null, sb);
+  });
+  // Kullanıcı isteği: bırakılan noktadaki işaretçiye TEKRAR tıklamak (örn. bir
+  // videoyu izledikten sonra), o seçeneğin anketini -henüz kaydedilmemiş
+  // cevaplar da dahil- kaldığı yerden tekrar açar.
+  faz1PlacementMarker.on('click', () => {
+    openFaz1Wizard();
   });
 }
 
@@ -2610,6 +2642,12 @@ function saveFaz1Option() {
 // kayıt işlemi yine mevcut "Kaydet ve sonraki seçeneğe geç" butonuyla yapılır.
 let faz1WizardSteps = [];
 let faz1WizardIdx = 0;
+// Kullanıcı isteği: aynı seçenek için sihirbaz kapatılıp (örn. video izlemek
+// için) sonra tekrar açıldığında BAŞTAN değil, KALDIĞI SORUDAN devam etsin.
+// Bu yüzden hangi seçenek için en son açıldığı burada tutulur; yalnızca
+// GERÇEKTEN başka bir seçeneğe geçildiğinde (ya da ilk açılışta) adım
+// sıfırlanır.
+let faz1WizardLastOptionCode = null;
 
 // ---- Öncelikli anlam etiketleri ----
 // Not: alanı taşıyan sütun adı geriye dönük uyumluluk için hâlâ
@@ -2666,7 +2704,10 @@ function buildFaz1WizardSteps() {
 
 function openFaz1Wizard() {
   faz1WizardSteps = buildFaz1WizardSteps();
-  faz1WizardIdx = 0;
+  if (faz1WizardLastOptionCode !== faz1Draft.optionCode) {
+    faz1WizardIdx = 0;
+  }
+  faz1WizardLastOptionCode = faz1Draft.optionCode;
   document.getElementById('faz1WizardOverlay').style.display = 'flex';
   renderFaz1WizardStep();
 }
