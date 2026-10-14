@@ -233,7 +233,7 @@
     </div>
     <div id="panoWrap" style="display:none; position:relative;">
       <button id="panoCloseBtn" class="expandBtn" title="Panoramik görünümü kapat">✕ Kapat</button>
-      <iframe id="panoFrame" style="width:100%; height:100%; border:0;" allowfullscreen loading="lazy"></iframe>
+      <div id="panoFrame" style="width:100%; height:100%;"></div>
     </div>
     <div id="legend">
       <div class="row"><span class="sw" style="background:#3fa9f5"></span> Güzergah (tıklayınca o noktanın görüntüsü açılır)</div>
@@ -1575,16 +1575,61 @@ map.on('click', (e) => {
   }
 });
 
-// ---- Panoramik görünüm (Google Street View, Maps Embed API) ----
+// ---- Panoramik görünüm (Google Street View, Maps JavaScript API) ----
 // Kolaylaştırıcı isteğiyle: harita üzerindeki kontrol düğmesi ile panoramik
 // mod açılır; mod açıkken haritada (rota üzerinde ya da herhangi bir yerde)
 // yapılan bir sonraki tıklama, o noktanın Street View panoramasını video
 // bölmesiyle aynı yarı-ekran (üstte panorama, altta harita) düzeninde açar.
-// Maps Embed API kullanımı ücretsiz ve sınırsızdır; yalnızca bir API
-// anahtarı (Google Cloud projesinde "Maps Embed API" etkinleştirilerek
-// alınır) gerektirir.
+// Not: panorama İÇİNDE döndükçe haritadaki ok da CANLI dönsün istendiği için
+// (ücretsiz Maps Embed API bunu desteklemiyor — yalnızca açılış anındaki
+// sabit bir yön kabul ediyor) burada Google'ın google.maps.StreetViewPanorama
+// nesnesini (Maps JavaScript API) kullanıyoruz; bu, Google Cloud projesinde
+// faturalama hesabı + "Maps JavaScript API" etkinleştirilmesini gerektirir
+// (ayda 5.000 panorama açılışına kadar yine ücretsizdir).
 const GOOGLE_MAPS_EMBED_API_KEY = 'AIzaSyCXVysYJMmlr5pf9kNuXFBINdtSDFmQgBs';
 let panoArmed = false;
+
+let gmapsApiReady = false;
+let gmapsApiQueue = [];
+window.initGMapsApi = function () {
+  gmapsApiReady = true;
+  const q = gmapsApiQueue; gmapsApiQueue = [];
+  q.forEach(fn => fn());
+};
+// Faturalama/API etkinleştirme eksikse Google bu geri çağrıyı tetikler —
+// sessizce boş kalan bir panorama yerine katılımcıya/kolaylaştırıcıya
+// anlaşılır bir uyarı gösteriyoruz.
+window.gm_authFailure = function () {
+  alert('Panoramik görünüm açılamadı: Google Haritalar API anahtarı için faturalama hesabı ya da "Maps JavaScript API" henüz etkin değil gibi görünüyor. Google Cloud Console üzerinden kontrol edin.');
+};
+function whenGMapsReady(fn) {
+  if (gmapsApiReady && window.google && window.google.maps) { fn(); return; }
+  gmapsApiQueue.push(fn);
+  if (!document.getElementById('gmapsApiScript')) {
+    const s = document.createElement('script');
+    s.id = 'gmapsApiScript';
+    s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(GOOGLE_MAPS_EMBED_API_KEY) + '&callback=initGMapsApi';
+    s.async = true;
+    document.head.appendChild(s);
+  }
+}
+let streetViewPanorama = null;
+let panoPovListener = null;
+function ensurePanorama(cb) {
+  whenGMapsReady(() => {
+    if (!streetViewPanorama) {
+      streetViewPanorama = new google.maps.StreetViewPanorama(document.getElementById('panoFrame'), {
+        addressControl: false,
+        showRoadLabels: false,
+        linksControl: true,
+        panControl: true,
+        zoomControl: true,
+        fullscreenControl: false,
+      });
+    }
+    cb(streetViewPanorama);
+  });
+}
 
 // ---- Panorama yön oku: harita üzerinde panoramanın açıldığı konumu ve
 // (yaklaşık) bakış yönünü gösteren dönebilen bir ok ----
@@ -1643,7 +1688,8 @@ function setPanoOpen(open) {
   wrap.classList.toggle('videoPaneExpanded', open);
   if (!open) {
     wrap.style.display = 'none';
-    document.getElementById('panoFrame').src = 'about:blank';
+    if (streetViewPanorama) streetViewPanorama.setVisible(false);
+    if (panoPovListener) { google.maps.event.removeListener(panoPovListener); panoPovListener = null; }
     if (panoMarker) { map.removeLayer(panoMarker); panoMarker = null; }
   }
 }
@@ -1654,8 +1700,6 @@ function openPanoramaAt(lat, lon) {
     return;
   }
   const heading = estimateHeadingAt(lat, lon);
-  const frame = document.getElementById('panoFrame');
-  frame.src = 'https://www.google.com/maps/embed/v1/streetview?key=' + encodeURIComponent(GOOGLE_MAPS_EMBED_API_KEY) + '&location=' + lat + ',' + lon + (heading != null ? '&heading=' + Math.round(heading) : '');
   const headingForIcon = heading != null ? heading : 0;
   if (!panoMarker) {
     panoMarker = L.marker([lat, lon], { icon: panoArrowIcon(headingForIcon), zIndexOffset: 1200, interactive: false }).addTo(map);
@@ -1664,6 +1708,19 @@ function openPanoramaAt(lat, lon) {
     panoMarker.setIcon(panoArrowIcon(headingForIcon));
   }
   setPanoOpen(true);
+  ensurePanorama((pano) => {
+    pano.setVisible(true);
+    pano.setPosition({ lat: lat, lng: lon });
+    pano.setPov({ heading: headingForIcon, pitch: 0 });
+    if (panoPovListener) { google.maps.event.removeListener(panoPovListener); panoPovListener = null; }
+    // Katılımcı panorama içinde döndükçe haritadaki ok da CANLI olarak
+    // aynı yöne döner — ücretli Maps JavaScript API'ye geçişin asıl amacı.
+    panoPovListener = pano.addListener('pov_changed', () => {
+      if (!panoMarker) return;
+      const pov = pano.getPov();
+      panoMarker.setIcon(panoArrowIcon(pov.heading));
+    });
+  });
 }
 
 function setPanoArmed(armed) {
