@@ -361,6 +361,7 @@ function renderIntroOverlay() {
 
   // Video bittiğinde (ya da hiç oynatılamazsa) tam ekran katmanı kapat; altındaki
   // giriş ekranı (welcomeScreen) zaten hazır olduğundan otomatik olarak görünür olur.
+  let introEnded = false;
   const concludeIntro = () => { overlay.style.display = 'none'; };
 
   videoEl.addEventListener('error', concludeIntro);
@@ -370,7 +371,7 @@ function renderIntroOverlay() {
     if (videoEl.readyState === 0) concludeIntro();
   }, 20000);
   videoEl.addEventListener('loadeddata', () => clearTimeout(startupFallbackTimer));
-  videoEl.addEventListener('ended', concludeIntro);
+  videoEl.addEventListener('ended', () => { introEnded = true; concludeIntro(); });
 
   const soundBtn = document.createElement('button');
   soundBtn.type = 'button';
@@ -412,7 +413,7 @@ function renderIntroOverlay() {
   // sayfaya gelen İLK etkileşimde (istediği yere tek dokunuş/tıklama yeterli),
   // video hâlâ sessizse sesi anında ve kesin olarak açıyoruz.
   const unlockSoundOnFirstInteraction = () => {
-    if (!videoEl.muted) return;
+    if (introEnded || videoEl.ended || !videoEl.muted) return;
     videoEl.muted = false;
     videoEl.play().catch(() => {});
     refreshSoundBtn();
@@ -2239,8 +2240,8 @@ function renderAllFaz1Markers() {
   getAllFaz1RecordsAcrossParticipants().forEach(r => {
     const icon = L.divIcon({
       className: '',
-      html: '<div style="background:#ff7a2f;color:#2a1200;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.5);">' + r.optionCode + '</div>',
-      iconSize: [22, 22], iconAnchor: [11, 11]
+      html: '<div style="background:#ff7a2f;color:#2a1200;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.5);">' + r.optionCode + '</div>',
+      iconSize: [30, 30], iconAnchor: [15, 15]
     });
     L.marker([r.lat, r.lon], { icon, zIndexOffset: 850, interactive: true })
       .bindPopup(r.optionCode + ' · ' + r.participantCode)
@@ -2540,7 +2541,7 @@ function updateFaz1PlacementMarker() {
   // içinde mi diye kontrol edilir, süperblok yeniden hesaplanır ve tür
   // 'serbest' olarak güncellenir (artık 10 sabit noktadan biri olması
   // gerekmiyor, tıpkı serbest tıklamada olduğu gibi).
-  const icon = L.divIcon({ className: '', html: '<div style="background:#ff7a2f;color:#2a1200;width:22px;height:22px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid #fff;box-shadow:0 1px 6px rgba(0,0,0,.5); cursor:grab; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:11px;"><span style="transform:rotate(45deg);">' + (faz1Draft.optionCode || '') + '</span></div>', iconSize: [22, 22], iconAnchor: [11, 22] });
+  const icon = L.divIcon({ className: '', html: '<div style="background:#ff7a2f;color:#2a1200;width:30px;height:30px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid #fff;box-shadow:0 1px 6px rgba(0,0,0,.5); cursor:grab; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:16px;"><span style="transform:rotate(45deg);">' + (faz1Draft.optionCode || '') + '</span></div>', iconSize: [30, 30], iconAnchor: [15, 30] });
   // bubblingMouseEvents:false -> bu işaretçiye tıklamak, altındaki haritanın
   // kendi 'click' olayını (ve onun üzerinden video/rota deneme mantığını)
   // TETİKLEMEZ; aşağıdaki kendi 'click' dinleyicisi tek başına çalışır.
