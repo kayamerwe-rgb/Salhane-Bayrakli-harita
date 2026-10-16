@@ -1949,6 +1949,38 @@ function showInfoModal(message, extraNode) {
   backdrop.appendChild(card);
   document.body.appendChild(backdrop);
 }
+// Merve isteğiyle: iki seçenekli ("Evet" / "Hayır, devam et") onay penceresi
+// — Faz 1'den Anket'e geçmeden önce kullanılır. Aynı infoModalBackdrop
+// sınıfını kullanır, böylece showInfoModal ile aynı anda açık kalmaz.
+function showConfirmModal(message, onConfirm) {
+  if (document.querySelector('.infoModalBackdrop')) return;
+  const backdrop = document.createElement('div');
+  backdrop.className = 'infoModalBackdrop';
+  backdrop.style.cssText = 'position:fixed; inset:0; background:rgba(5,8,10,0.72); z-index:8500; display:flex; align-items:center; justify-content:center; padding:24px;';
+  const card = document.createElement('div');
+  card.style.cssText = 'width:min(420px, 100%); background:var(--panel); border:1px solid var(--border); border-radius:14px; box-shadow:0 12px 40px rgba(0,0,0,.55); padding:22px 22px 18px; text-align:center;';
+  const msg = document.createElement('div');
+  msg.style.cssText = 'font-size:14px; line-height:1.55; color:var(--text); margin-bottom:18px; white-space:pre-line;';
+  msg.textContent = message;
+  const btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex; gap:10px; justify-content:center; flex-wrap:wrap;';
+  const noBtn = document.createElement('button');
+  noBtn.className = 'faz1Btn';
+  noBtn.style.cssText = 'width:auto; padding:9px 20px;';
+  noBtn.textContent = 'Hayır, devam et';
+  noBtn.addEventListener('click', () => document.body.removeChild(backdrop));
+  const yesBtn = document.createElement('button');
+  yesBtn.className = 'faz1Btn primary';
+  yesBtn.style.cssText = 'width:auto; padding:9px 20px;';
+  yesBtn.textContent = 'Evet, ankete geç';
+  yesBtn.addEventListener('click', () => { document.body.removeChild(backdrop); onConfirm(); });
+  btnRow.appendChild(noBtn);
+  btnRow.appendChild(yesBtn);
+  card.appendChild(msg);
+  card.appendChild(btnRow);
+  backdrop.appendChild(card);
+  document.body.appendChild(backdrop);
+}
 // Anket kilidi penceresine eklenen yanıt ölçeği hatırlatma kutusu (Merve
 // isteğiyle): SURVEY_SCALE dizisiyle aynı kaynaktan türetilir, böylece
 // asıl anket sorularındaki ölçekle her zaman birebir eşleşir.
@@ -2023,22 +2055,37 @@ function classifySuperblokForPoint(lat, lon) {
 
 // ---- Mod sekmeleri (Video Rota / PRE-POST Anket / Faz 1) ----
 let currentMode = 'faz1';
+// Kayıtlı ilerlemeyi geri yüklerken (sayfa yeniden açıldığında veya kişisel
+// linkten) sekmeler programatik olarak .click() ile tetiklenir; bu durumda
+// aşağıdaki "emin misiniz" onay penceresinin çıkmaması için bu bayrak
+// geçici olarak true yapılır (bkz. kaydedilenIlerlemeyiGeriYukle, linkBaslat).
+let skipModeConfirm = false;
+function applyModeSwitch(btn) {
+  currentMode = btn.dataset.mode;
+  document.querySelectorAll('#modeTabs .modeTabBtn').forEach(b => b.classList.toggle('active', b === btn));
+  document.getElementById('modeSurvey').style.display = currentMode === 'survey' ? 'flex' : 'none';
+  document.getElementById('modeFaz1').style.display = currentMode === 'faz1' ? 'flex' : 'none';
+  document.getElementById('modeFaz2').style.display = currentMode === 'faz2' ? 'flex' : 'none';
+  document.getElementById('participantBar').style.display = 'block';
+  if (currentMode !== 'faz1' && currentMode !== 'faz2') {
+    disarmFaz1Placement();
+  }
+  if (currentMode !== 'faz2') clearFaz2Highlight();
+  if (currentMode === 'survey' && activeParticipantCode) initSurveyForParticipant();
+  if (currentMode === 'faz2' && activeParticipantCode) initFaz2ForParticipant();
+}
 document.querySelectorAll('#modeTabs .modeTabBtn').forEach(btn => {
   btn.addEventListener('click', () => {
     if (btn.dataset.mode === 'faz2') { showInfoModal(FAZ2_LOCK_MESSAGE); return; }
     if (btn.dataset.mode === currentMode) return;
-    currentMode = btn.dataset.mode;
-    document.querySelectorAll('#modeTabs .modeTabBtn').forEach(b => b.classList.toggle('active', b === btn));
-    document.getElementById('modeSurvey').style.display = currentMode === 'survey' ? 'flex' : 'none';
-    document.getElementById('modeFaz1').style.display = currentMode === 'faz1' ? 'flex' : 'none';
-    document.getElementById('modeFaz2').style.display = currentMode === 'faz2' ? 'flex' : 'none';
-    document.getElementById('participantBar').style.display = 'block';
-    if (currentMode !== 'faz1' && currentMode !== 'faz2') {
-      disarmFaz1Placement();
+    // Merve isteğiyle: Faz 1'den Anket'e geçerken, tüm yerleştirmelerin
+    // tamamlandığından emin olunması için ekranın ortasında bir onay
+    // penceresi çıkar; yalnızca "Evet" denince anket açılır.
+    if (btn.dataset.mode === 'survey' && currentMode === 'faz1' && !skipModeConfirm) {
+      showConfirmModal('Tüm yerleştirmelerinizi tamamladığınıza ve ankete geçmek istediğinize emin misiniz?', () => applyModeSwitch(btn));
+      return;
     }
-    if (currentMode !== 'faz2') clearFaz2Highlight();
-    if (currentMode === 'survey' && activeParticipantCode) initSurveyForParticipant();
-    if (currentMode === 'faz2' && activeParticipantCode) initFaz2ForParticipant();
+    applyModeSwitch(btn);
   });
 });
 // Sayfa ilk yüklendiğinde currentMode zaten 'faz1' (yukarıda varsayılan
@@ -2890,25 +2937,19 @@ function saveSurveyDraftLocal(code, app, data) {
   if (typeof renderPcRosterStatus === 'function') renderPcRosterStatus();
 }
 
-// Kolaylaştırıcı isteğiyle: anket bu ekranda yalnızca incelenir, cevaplanamaz.
-// Soru öğeleri (radio/select/textarea) görünür ama tıklanamaz (pointer-events:
-// none + tabindex="-1") hâlde render edilir; #surveyBody her yeniden
-// çizimde yalnızca innerHTML ile değiştiği için, gövde üzerine TEK SEFERLİK
-// eklenen bu delege edilmiş dinleyici her tıklamada bilgi penceresini açar.
-document.getElementById('surveyBody').addEventListener('click', () => {
-  // Kolaylaştırıcı isteğiyle: bu kilit mesajı yalnızca GERÇEK veri toplama
-  // modunda gösterilir. DENEME modunda anket gerçekten doldurulabilir
-  // olduğundan (bkz. renderSurveyPanel), burada hiçbir şey yapılmaz.
-  if (getRecordingMode() === 'real') {
-    showInfoModal(SURVEY_LOCK_MESSAGE);
-  }
-});
+// Merve isteğiyle (güncelleme): anket artık her iki modda da (deneme ve
+// gerçek veri toplama) katılımcı tarafından uygulama içinde doldurulup
+// kaydedilebilir; yüz-yüze-cevaplama kilidi kaldırıldı. Anket, yan paneldeki
+// dar #surveyBody yerine ekranın ortasında, büyük ve okunaklı bir pencerede
+// açılır (bkz. openSurveyCenterModal). #surveyBody yalnızca durum metni ve
+// pencereyi yeniden açmak için bir düğme gösterir.
 
 function initSurveyForParticipant() {
   surveyStartEpoch = Date.now();
   const existing = loadSurveyDraft(activeParticipantCode, surveyApplication);
   surveyDraft = existing || { answers: {}, openAnswers: {}, priorities: [{}, {}, {}], submitted: false };
   renderSurveyPanel();
+  openSurveyCenterModal();
 }
 
 function renderSurveyPanel() {
@@ -2919,64 +2960,85 @@ function renderSurveyPanel() {
     bodyEl.innerHTML = '';
     return;
   }
-  // Kolaylaştırıcı isteğiyle: DENEME modunda (danışmanla/ekiple deneme amaçlı
-  // test için) bu anket gerçekten doldurulabilir; cevaplar yalnızca bu
-  // tarayıcıda (localStorage) saklanır, hiçbir yere gönderilmez. GERÇEK veri
-  // toplama modunda ise protokol gereği anket yalnızca görüntülenir — cevaplar
-  // yüz yüze görüşme sırasında Merve Kaya tarafından ayrıca kaydedilir.
-  const interactive = getRecordingMode() !== 'real';
-
   statusEl.innerHTML = 'Katılımcı: <b style="color:var(--text)">' + activeParticipantCode + '</b>'
-    + (surveyDraft.submitted ? ' · <span style="color:#2ecc71;">✓ gönderildi</span>' : '')
-    + (interactive ? ' · <span style="color:var(--accent2);">✎ Deneme modu — doldurulabilir, yalnızca bu tarayıcıda saklanır</span>' : '');
-
+    + (surveyDraft.submitted ? ' · <span style="color:#2ecc71;">✓ anket kaydedildi</span>' : '');
   bodyEl.innerHTML = '';
+  const reopenBtn = document.createElement('button');
+  reopenBtn.type = 'button';
+  reopenBtn.className = 'faz1Btn primary';
+  reopenBtn.style.cssText = 'width:100%;';
+  reopenBtn.textContent = surveyDraft.submitted ? '✓ Anketi Görüntüle / Düzenle' : 'Anketi Aç';
+  reopenBtn.addEventListener('click', openSurveyCenterModal);
+  bodyEl.appendChild(reopenBtn);
+}
 
-  {
-    const oTitle = document.createElement('div');
-    oTitle.className = 'surveyBlockTitle';
-    oTitle.textContent = 'AÇIK UÇLU SORULAR';
-    bodyEl.appendChild(oTitle);
-    DATA.postOpenEnded.forEach((q, i) => {
-      const wrap = document.createElement('div');
-      wrap.className = 'surveyItem';
-      wrap.innerHTML = '<div class="q"><b>' + (i + 1) + '.</b> ' + q + '</div>';
-      const ta = document.createElement('textarea');
-      ta.className = 'faz1Textarea';
-      ta.value = surveyDraft.openAnswers['o' + (i + 1)] || '';
-      if (interactive) {
-        ta.addEventListener('input', () => {
-          surveyDraft.openAnswers['o' + (i + 1)] = ta.value;
-          saveSurveyDraftLocal(activeParticipantCode, surveyApplication, surveyDraft);
-        });
-      } else {
-        ta.style.pointerEvents = 'none';
-        ta.tabIndex = -1;
-      }
-      wrap.appendChild(ta);
-      bodyEl.appendChild(wrap);
-    });
-  }
+// Merve isteğiyle: anket soruları, yan paneldeki dar sütunda tam okunamadığı
+// için artık ekranın ortasında, geniş ve kaydırılabilir bir pencerede açılır.
+// Her yanıt yazıldıkça otomatik olarak (yalnızca bu tarayıcıda) kaydedilir;
+// "Anketi Kaydet ve Bitir" ile hem son kez kaydedilir hem de pencere kapanır.
+function openSurveyCenterModal() {
+  if (!activeParticipantCode) return;
+  if (document.querySelector('.surveyModalBackdrop')) return;
+  const backdrop = document.createElement('div');
+  backdrop.className = 'surveyModalBackdrop';
+  backdrop.style.cssText = 'position:fixed; inset:0; background:rgba(5,8,10,0.78); z-index:8600; display:flex; align-items:center; justify-content:center; padding:24px;';
+  const card = document.createElement('div');
+  card.style.cssText = 'width:min(680px, 100%); max-height:86vh; display:flex; flex-direction:column; background:var(--panel); border:1px solid var(--border); border-radius:16px; box-shadow:0 16px 50px rgba(0,0,0,.6);';
 
-  if (interactive) {
-    const saveBtn = document.createElement('button');
-    saveBtn.type = 'button';
-    saveBtn.className = 'faz1Btn primary';
-    saveBtn.style.cssText = 'width:100%; margin-top:14px;';
-    saveBtn.textContent = surveyDraft.submitted ? '✓ Taslak kaydedildi — tekrar kaydet' : 'Taslağı Kaydet';
-    saveBtn.addEventListener('click', () => {
-      surveyDraft.submitted = true;
+  const head = document.createElement('div');
+  head.style.cssText = 'padding:20px 26px 14px; border-bottom:1px solid var(--border); display:flex; align-items:flex-start; justify-content:space-between; gap:12px;';
+  const headTitle = document.createElement('div');
+  headTitle.innerHTML = '<div style="font-size:14.5px; font-weight:700; letter-spacing:.03em; color:var(--text); text-transform:uppercase;">Anket — Açık Uçlu Sorular</div>'
+    + '<div style="font-size:12px; color:var(--muted); margin-top:4px;">Katılımcı: <b style="color:var(--text)">' + activeParticipantCode + '</b></div>';
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.setAttribute('aria-label', 'Kapat');
+  closeBtn.textContent = '✕';
+  closeBtn.title = 'Kapat (yanıtlar taslak olarak saklanır, daha sonra devam edebilirsiniz)';
+  closeBtn.style.cssText = 'background:none; border:none; color:var(--muted); font-size:18px; cursor:pointer; line-height:1; padding:4px; flex-shrink:0;';
+  closeBtn.addEventListener('click', () => { document.body.removeChild(backdrop); renderSurveyPanel(); });
+  head.appendChild(headTitle);
+  head.appendChild(closeBtn);
+
+  const body = document.createElement('div');
+  body.style.cssText = 'flex:1; overflow-y:auto; padding:18px 26px;';
+  DATA.postOpenEnded.forEach((q, i) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'surveyItem';
+    wrap.innerHTML = '<div class="q" style="font-size:14px;"><b>' + (i + 1) + '.</b> ' + q + '</div>';
+    const ta = document.createElement('textarea');
+    ta.className = 'faz1Textarea';
+    ta.style.cssText = 'width:100%; min-height:92px; font-size:13.5px;';
+    ta.value = surveyDraft.openAnswers['o' + (i + 1)] || '';
+    ta.addEventListener('input', () => {
+      surveyDraft.openAnswers['o' + (i + 1)] = ta.value;
       saveSurveyDraftLocal(activeParticipantCode, surveyApplication, surveyDraft);
-      renderSurveyPanel();
     });
-    bodyEl.appendChild(saveBtn);
-  }
+    wrap.appendChild(ta);
+    body.appendChild(wrap);
+  });
 
-  // Kolaylaştırıcı isteğiyle: GERÇEK veri toplama modunda bu anket haritada
-  // yalnızca incelenir, doldurulamaz; "Anketi gönder" düğmesi ve gönderim
-  // mantığı o modda kasıtlı olarak yoktur (bkz. #surveyBody üzerindeki delege
-  // edilmiş tıklama dinleyicisi — SURVEY_LOCK_MESSAGE, yalnızca gerçek modda
-  // tetiklenir). DENEME modunda ise anket yukarıdaki gibi tamamen doldurulabilir.
+  const foot = document.createElement('div');
+  foot.style.cssText = 'padding:14px 26px 22px; border-top:1px solid var(--border);';
+  const finishBtn = document.createElement('button');
+  finishBtn.type = 'button';
+  finishBtn.className = 'faz1Btn primary';
+  finishBtn.style.cssText = 'width:100%; padding:11px;';
+  finishBtn.textContent = 'Anketi Kaydet ve Bitir';
+  finishBtn.addEventListener('click', () => {
+    surveyDraft.submitted = true;
+    saveSurveyDraftLocal(activeParticipantCode, surveyApplication, surveyDraft);
+    document.body.removeChild(backdrop);
+    renderSurveyPanel();
+    showInfoModal('Anketiniz kaydedildi. Katılımınız için teşekkür ederiz.');
+  });
+  foot.appendChild(finishBtn);
+
+  card.appendChild(head);
+  card.appendChild(body);
+  card.appendChild(foot);
+  backdrop.appendChild(card);
+  document.body.appendChild(backdrop);
 }
 
 
@@ -3270,7 +3332,13 @@ function kaydedilenIlerlemeyiGeriYukle() {
 
   if (kayit.mode) {
     const modeBtn = document.querySelector('#modeTabs .modeTabBtn[data-mode="' + kayit.mode + '"]');
-    if (modeBtn && kayit.mode !== 'video') modeBtn.click();
+    if (modeBtn && kayit.mode !== 'video') {
+      // Kayıtlı ilerleme geri yüklenirken Anket'e dönülüyorsa "emin misiniz"
+      // onay penceresi çıkmasın (kullanıcı zaten daha önce geçmişti).
+      skipModeConfirm = true;
+      modeBtn.click();
+      skipModeConfirm = false;
+    }
   }
 
   document.getElementById('welcomeScreen').style.display = 'none';
@@ -3542,7 +3610,13 @@ async function linkBaslat() {
   linkKatilimciyiAyarla(linkCode);
   if (secilen && secilen.mod && secilen.mod !== 'video' && secilen.mod !== 'faz2') {
     const tab = document.querySelector('#modeTabs .modeTabBtn[data-mode="' + secilen.mod + '"]');
-    if (tab) tab.click();
+    if (tab) {
+      // Kişisel link üzerinden kaldığı yerden devam ederken Anket'e
+      // dönülüyorsa "emin misiniz" onay penceresi çıkmasın.
+      skipModeConfirm = true;
+      tab.click();
+      skipModeConfirm = false;
+    }
   }
   if (secilen && secilen.faz1Taslak) linkTaslagiGeriYukle(secilen.faz1Taslak);
   renderAllFaz1Markers();
