@@ -3023,6 +3023,64 @@ function openSurveyCenterModal() {
     body.appendChild(wrap);
   });
 
+  // POST: Müdahale türleri arasında ilk üç öncelik (ANKET.pdf, s.10) —
+  // surveyDraft.priorities alanı önceden tanımlıydı ama hiçbir ekrana
+  // bağlanmamıştı; bu blok onu görünür ve kaydedilir hale getirir.
+  if (!Array.isArray(surveyDraft.priorities) || surveyDraft.priorities.length !== 3) {
+    surveyDraft.priorities = [{}, {}, {}];
+  }
+  const prioritySection = document.createElement('div');
+  prioritySection.className = 'surveyItem';
+  prioritySection.style.cssText = 'margin-top:22px; padding-top:18px; border-top:1px solid var(--border);';
+  prioritySection.innerHTML = '<div class="q" style="font-size:14px; font-weight:700; text-transform:uppercase; letter-spacing:.02em; margin-bottom:6px;">POST: Müdahale Türleri Arasında İlk Üç Öncelik</div>'
+    + '<div style="font-size:13.5px; margin-bottom:6px;">Bu çalışmada yer alan tüm müdahale seçeneklerini değerlendirdikten sonra, sınırlı kaynaklar nedeniyle ilk uygulama aşamasında yalnızca üç müdahaleye öncelik verilebilseydi hangilerini seçerdiniz?</div>'
+    + '<div style="font-size:12.5px; color:var(--muted); margin-bottom:12px;">Lütfen opsiyon kodunu veya adını belirterek 1., 2. ve 3. öncelik şeklinde sıralayınız ve her biri için seçme nedeninizi kısaca açıklayınız.</div>';
+  body.appendChild(prioritySection);
+
+  for (let pi = 0; pi < 3; pi++) {
+    const rankRow = document.createElement('div');
+    rankRow.style.cssText = 'margin-bottom:14px; padding:12px; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:10px;';
+    const rankLabel = document.createElement('div');
+    rankLabel.style.cssText = 'font-size:13px; font-weight:700; margin-bottom:8px;';
+    rankLabel.textContent = (pi + 1) + '. öncelik';
+    rankRow.appendChild(rankLabel);
+
+    const rankSelect = document.createElement('select');
+    rankSelect.className = 'faz1Textarea';
+    rankSelect.style.cssText = 'width:100%; margin-bottom:8px; font-size:13.5px;';
+    const emptyOpt = document.createElement('option');
+    emptyOpt.value = '';
+    emptyOpt.textContent = '— Opsiyon kodu/adı seçin —';
+    rankSelect.appendChild(emptyOpt);
+    DATA.optionCatalog.forEach(o => {
+      const optEl = document.createElement('option');
+      optEl.value = o.code;
+      optEl.textContent = o.code + ' — ' + o.name;
+      if (surveyDraft.priorities[pi] && surveyDraft.priorities[pi].code === o.code) optEl.selected = true;
+      rankSelect.appendChild(optEl);
+    });
+    rankSelect.addEventListener('change', () => {
+      surveyDraft.priorities[pi] = surveyDraft.priorities[pi] || {};
+      surveyDraft.priorities[pi].code = rankSelect.value;
+      saveSurveyDraftLocal(activeParticipantCode, surveyApplication, surveyDraft);
+    });
+    rankRow.appendChild(rankSelect);
+
+    const rankReason = document.createElement('textarea');
+    rankReason.className = 'faz1Textarea';
+    rankReason.placeholder = 'Kısa seçme nedeni';
+    rankReason.style.cssText = 'width:100%; min-height:60px; font-size:13.5px;';
+    rankReason.value = (surveyDraft.priorities[pi] && surveyDraft.priorities[pi].reason) || '';
+    rankReason.addEventListener('input', () => {
+      surveyDraft.priorities[pi] = surveyDraft.priorities[pi] || {};
+      surveyDraft.priorities[pi].reason = rankReason.value;
+      saveSurveyDraftLocal(activeParticipantCode, surveyApplication, surveyDraft);
+    });
+    rankRow.appendChild(rankReason);
+
+    body.appendChild(rankRow);
+  }
+
   const foot = document.createElement('div');
   foot.style.cssText = 'padding:14px 26px 22px; border-top:1px solid var(--border);';
   const finishBtn = document.createElement('button');
