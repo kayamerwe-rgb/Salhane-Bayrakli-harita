@@ -2071,7 +2071,7 @@ function applyModeSwitch(btn) {
     disarmFaz1Placement();
   }
   if (currentMode !== 'faz2') clearFaz2Highlight();
-  if (currentMode === 'survey' && activeParticipantCode) initSurveyForParticipant();
+  if (currentMode === 'survey' && activeParticipantCode) { initSurveyForParticipant(); openSurveyCenterModal(); }
   if (currentMode === 'faz2' && activeParticipantCode) initFaz2ForParticipant();
 }
 document.querySelectorAll('#modeTabs .modeTabBtn').forEach(btn => {
@@ -2945,11 +2945,16 @@ function saveSurveyDraftLocal(code, app, data) {
 // pencereyi yeniden açmak için bir düğme gösterir.
 
 function initSurveyForParticipant() {
+  // DİKKAT: bu fonksiyon yalnızca anket taslağını belleğe/yan panele
+  // yükler, pencereyi AÇMAZ — "Başla" (pcSetBtn) katılımcı seçerken de
+  // çağrılıyor; orada anket penceresinin açılması bir hataydı (Merve
+  // bildirdi: "Faz 1 yerleştirmeye basınca anket çıkıyor"). Pencereyi
+  // açma işi yalnızca gerçek Anket sekmesine geçişte yapılır (bkz.
+  // applyModeSwitch).
   surveyStartEpoch = Date.now();
   const existing = loadSurveyDraft(activeParticipantCode, surveyApplication);
   surveyDraft = existing || { answers: {}, openAnswers: {}, priorities: [{}, {}, {}], submitted: false };
   renderSurveyPanel();
-  openSurveyCenterModal();
 }
 
 function renderSurveyPanel() {
