@@ -2510,6 +2510,11 @@ PARTICIPANT_ROSTER_SPEC.forEach(spec => {
     });
   }
 });
+// DENEME modu: asıl 15 kişilik örneklemin bir parçası değildir; manuel
+// (linksiz) katılımcı listesinde de seçilebilsin diye ayrı bir "TEST" girişi
+// olarak eklenir (Merve kararı, 18 Eki 2026). Faz 2 sekmesi yalnız bu kod
+// aktifken FAZ2_ACIK'tan bağımsız olarak açılır (bkz. faz2SekmesiAcikMi).
+PARTICIPANT_ROSTER.push({ code: 'TEST', catCode: '', catLabel: 'Deneme (asıl veriye karışmaz)' });
 // Katılımcı kodu artık kategoriyi harfle taşımadığından (bkz. yukarısı),
 // Google E-Tablo'ya gönderilen "participantCategory" alanı roster'dan
 // (catCode) okunur — kod string'inden ayrıştırılmaz.
@@ -2531,15 +2536,17 @@ function renderPcComposition() {
   // Ham DATA.participantCategories sayıları yerine PARTICIPANT_ROSTER'daki
   // NİHAİ (override'lar uygulanmış) etiketlere göre sayılır — aksi halde ör.
   // "Yapım sektörü temsilcisi (2)" gibi artık kimsenin taşımadığı bir etiket
-  // görünmeye devam ederdi.
+  // görünmeye devam ederdi. "TEST" girişi asıl örnekleme dahil olmadığından
+  // bu sayıma katılmaz — gerçek katılımcı sayısı (15) burada hep doğru kalır.
+  const gercekRoster = PARTICIPANT_ROSTER.filter(p => p.code !== 'TEST');
   const counts = [];
-  PARTICIPANT_ROSTER.forEach(p => {
+  gercekRoster.forEach(p => {
     let entry = counts.find(c => c.label === p.catLabel);
     if (!entry) { entry = { label: p.catLabel, n: 0 }; counts.push(entry); }
     entry.n++;
   });
   const parts = counts.map(c => c.label + ' (' + c.n + ')');
-  el.textContent = 'Toplam ' + PARTICIPANT_ROSTER.length + ' katılımcı: ' + parts.join(' · ');
+  el.textContent = 'Toplam ' + gercekRoster.length + ' katılımcı: ' + parts.join(' · ');
 }
 renderPcComposition();
 
