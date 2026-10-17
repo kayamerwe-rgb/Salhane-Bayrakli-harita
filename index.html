@@ -61,6 +61,9 @@
   .rmBtn { font-size:10px; font-weight:600; padding:4px 8px; border-radius:5px; border:1px solid rgba(255,255,255,.18); background:rgba(255,255,255,.06); color:var(--text); cursor:pointer; white-space:nowrap; }
   .rmBtn:hover { background:rgba(255,255,255,.14); }
   .rmClearBtn { border-color:rgba(231,76,60,.4); color:#ff9a8d; }
+  .rmDragHandle { width:100%; text-align:center; font-size:10px; letter-spacing:.08em; color:var(--muted); cursor:grab; padding:0 0 4px; user-select:none; touch-action:none; order:-1; }
+  .rmDragHandle:active { cursor:grabbing; }
+  #recordingModePanel.rmDragging { opacity:.85; box-shadow:0 10px 28px rgba(0,0,0,.55); }
   #faz1WizardOverlay { display:none; position:fixed; inset:0; z-index:3000; background:rgba(5,8,10,0.72); align-items:center; justify-content:center; padding:24px; }
   #faz1WizardCard { width:min(480px, 100%); max-height:min(560px, 90vh); background:var(--panel); border:1px solid var(--border); border-radius:14px; box-shadow:0 12px 40px rgba(0,0,0,.55); display:flex; flex-direction:column; overflow:hidden; }
   #faz1WizardProgress { flex:0 0 auto; padding:12px 20px 0; font-size:11px; color:var(--muted); letter-spacing:.04em; text-transform:uppercase; }
@@ -2046,6 +2049,7 @@ function renderRecordingModePanel() {
   const isReal = mode === 'real';
   const pilotOn = getPilotRecording();
   el.innerHTML = `
+    <div class="rmDragHandle" title="Tutup sürükleyin, paneli istediğiniz yere taşıyın">⠿⠿⠿ taşı</div>
     <div class="rmStatus ${isReal ? 'rmReal' : 'rmPractice'}">${isReal ? '● GERÇEK KAYIT' : '● DENEME MODU'}</div>
     <button id="rmToggleBtn" class="rmBtn"${REAL_MODE_LOCKED ? ' disabled title="Gerçek kayıt veri toplama gününe kadar kilitlidir"' : ''}>${REAL_MODE_LOCKED ? 'Gerçek Kayıt: Kilitli' : (isReal ? 'Deneme Moduna Dön' : 'Gerçek Kayıt Moduna Geç')}</button>
     <div class="rmStatus ${pilotOn ? 'rmReal' : 'rmPractice'}" style="margin-top:8px;">${pilotOn ? '● PİLOT KAYIT AÇIK' : '○ Pilot Kayıt kapalı'}</div>
@@ -2128,6 +2132,60 @@ function postPilotToSheets(type, data) {
   }).then(() => true).catch(() => false);
 }
 renderRecordingModePanel();
+setupRecordingModePanelDrag();
+
+// Kolaylaştırıcı isteği (18 Eki 2026): panel katılımcı/roster panelinin
+// üstünü kapatıyordu. Artık sürüklenebilir (başlıktaki "taşı" tutamacından)
+// ve son bırakılan konum bu tarayıcıda hatırlanır. İlk açılışta (henüz
+// hiç taşınmamışsa) varsayılan olarak sol üstte, harita yakınlaştırma
+// düğmelerinin sağından başlar — böylece hiçbir şeyin üstünü kapatmaz.
+const RM_PANEL_POS_KEY = 'bikemap_recordingPanel_pos_v1';
+function setupRecordingModePanelDrag() {
+  const el = document.getElementById('recordingModePanel');
+  if (!el) return;
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(RM_PANEL_POS_KEY) || 'null'); } catch (e) { saved = null; }
+  const applyPos = (left, top) => {
+    const maxLeft = Math.max(0, window.innerWidth - el.offsetWidth - 4);
+    const maxTop = Math.max(0, window.innerHeight - el.offsetHeight - 4);
+    el.style.left = Math.min(Math.max(0, left), maxLeft) + 'px';
+    el.style.top = Math.min(Math.max(0, top), maxTop) + 'px';
+    el.style.right = 'auto';
+  };
+  if (saved && typeof saved.left === 'number' && typeof saved.top === 'number') {
+    applyPos(saved.left, saved.top);
+  } else {
+    applyPos(60, 10); // leaflet zoom kontrolünün sağından, varsayılan konum
+  }
+  let dragging = false, startX = 0, startY = 0, startLeft = 0, startTop = 0;
+  el.addEventListener('pointerdown', (e) => {
+    if (!e.target.closest('.rmDragHandle')) return;
+    dragging = true;
+    el.classList.add('rmDragging');
+    startX = e.clientX; startY = e.clientY;
+    const rect = el.getBoundingClientRect();
+    startLeft = rect.left; startTop = rect.top;
+    el.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  el.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    applyPos(startLeft + (e.clientX - startX), startTop + (e.clientY - startY));
+  });
+  const endDrag = (e) => {
+    if (!dragging) return;
+    dragging = false;
+    el.classList.remove('rmDragging');
+    const rect = el.getBoundingClientRect();
+    try { localStorage.setItem(RM_PANEL_POS_KEY, JSON.stringify({ left: rect.left, top: rect.top })); } catch (err) {}
+  };
+  el.addEventListener('pointerup', endDrag);
+  el.addEventListener('pointercancel', endDrag);
+  window.addEventListener('resize', () => {
+    const rect = el.getBoundingClientRect();
+    applyPos(rect.left, rect.top);
+  });
+}
 
 // ---- Bilgi uyarı penceresi (anket kilidi / Faz 2 kilidi için) ----
 // Kolaylaştırıcı isteğiyle: PRE/POST anket bu haritada yalnızca GÖRÜNTÜLENİR
