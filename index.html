@@ -1875,6 +1875,167 @@ function clearAllRecords() {
   toRemove.forEach(k => localStorage.removeItem(k));
   location.reload();
 }
+// ---- YEREL (TARAYICI) VERİ DIŞA AKTARIMI ----
+// Google E-Tablo'ya gönderimin ağ/arka-uç kesintisinde doğrulanamaması
+// (fire-and-forget, no-cors) nedeniyle eklenen GÜVENLİK AĞI: bu tarayıcıda
+// o ana kadar biriken TÜM katılımcıların Faz 1/Faz 2/Anket kayıtlarını,
+// hiçbir ağ bağlantısı gerekmeden, doğrudan bilgisayara indirilebilir
+// dosyalar (CSV + JSON) hâline getirir. Hem Deneme hem Pilot hem Gerçek
+// modda çalışır; herhangi bir veriyi SİLMEZ, yalnızca anlık bir kopyasını
+// indirir.
+function gatherAllLocalRecordsForExport() {
+  const participants = {};
+  function ensure(code) {
+    if (!participants[code]) participants[code] = { faz1: {}, faz2: {}, survey: {}, faz1Taslak: null };
+    return participants[code];
+  }
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k.indexOf(FAZ1_STORE_PREFIX) === 0) {
+      const code = k.slice(FAZ1_STORE_PREFIX.length);
+      try { ensure(code).faz1 = JSON.parse(localStorage.getItem(k) || '{}'); } catch (e) {}
+    } else if (typeof FAZ2_STORE_PREFIX !== 'undefined' && k.indexOf(FAZ2_STORE_PREFIX) === 0) {
+      const code = k.slice(FAZ2_STORE_PREFIX.length);
+      try { ensure(code).faz2 = JSON.parse(localStorage.getItem(k) || '{}'); } catch (e) {}
+    } else if (typeof SURVEY_STORE_PREFIX !== 'undefined' && k.indexOf(SURVEY_STORE_PREFIX) === 0) {
+      const rest = k.slice(SURVEY_STORE_PREFIX.length); // "<kod>_<pre|post>"
+      const li = rest.lastIndexOf('_');
+      const code = li === -1 ? rest : rest.slice(0, li);
+      const app = li === -1 ? '' : rest.slice(li + 1);
+      try {
+        const val = JSON.parse(localStorage.getItem(k) || 'null');
+        ensure(code).survey[app || 'anket'] = val;
+      } catch (e) {}
+    } else if (k.indexOf(FAZ1_DRAFT_STORE_PREFIX) === 0) {
+      const code = k.slice(FAZ1_DRAFT_STORE_PREFIX.length);
+      try { ensure(code).faz1Taslak = JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) {}
+    }
+  }
+  return participants;
+}
+function downloadTextFile(filename, mime, content) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+function csvEscapeField(v) {
+  if (v === null || v === undefined) return '';
+  const s = String(v);
+  return /[",\n;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function exportFaz1CSV(participants) {
+  const scoreKeys = [];
+  Object.keys(participants).forEach(code => {
+    Object.keys(participants[code].faz1 || {}).forEach(optCode => {
+      const rec = participants[code].faz1[optCode];
+      Object.keys((rec && rec.scores) || {}).forEach(sk => { if (scoreKeys.indexOf(sk) === -1) scoreKeys.push(sk); });
+    });
+  });
+  const headers = ['Katilimci_Kodu', 'Secenek_Kodu', 'Yerlestirme_Turu', 'Guzergah_No', 'Superblok', 'Enlem', 'Boylam', 'Uygulanamaz']
+    .concat(scoreKeys.map(k => 'Puan_' + k))
+    .concat(['Mudahale_Gerekcesi', 'Konum_Gerekcesi', 'Kolaylastirici_Notu']);
+  const rows = [headers.map(csvEscapeField).join(',')];
+  Object.keys(participants).sort().forEach(code => {
+    const faz1 = participants[code].faz1 || {};
+    Object.keys(faz1).forEach(optCode => {
+      const r = faz1[optCode] || {};
+      const row = [code, optCode, r.placementType || '', r.guzergahNo || '', r.superblok || '', r.lat, r.lon, r.notApplicable ? 'EVET' : ''];
+      scoreKeys.forEach(sk => row.push(r.scores && r.scores[sk] !== undefined ? r.scores[sk] : ''));
+      row.push(r.interventionRationale || '', r.locationRationale || '', r.facilitatorNote || '');
+      rows.push(row.map(csvEscapeField).join(','));
+    });
+  });
+  // Başına BOM: Excel'de Türkçe karakterlerin (ç,ş,ğ,ı,ö,ü) bozuk görünmemesi için.
+  return '﻿' + rows.join('\r\n');
+}
+// Kasıtlı olarak İKİ AYRI düğme/fonksiyona bölündü: tarayıcılar tek bir
+// tıklamadan tetiklenen BİRDEN FAZLA otomatik indirmeyi engelleyebilir
+// (Chrome'un "çoklu indirme" koruması) — bu durumda ikinci dosya sessizce
+// kaybolabilir. Her indirme kendi ayrı kullanıcı tıklamasına bağlı olunca
+// bu risk tamamen ortadan kalkar.
+function exportFaz1CSVNow() {
+  const participants = gatherAllLocalRecordsForExport();
+  const codes = Object.keys(participants);
+  if (!codes.length) { alert('Bu tarayıcıda henüz kayıtlı hiçbir katılımcı verisi yok.'); return; }
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const csv = exportFaz1CSV(participants);
+  downloadTextFile('salhane_faz1_' + ts + '.csv', 'text/csv;charset=utf-8', csv);
+  alert('Faz 1 tablosu indirildi (.csv — doğrudan Excel ile açılır). İndirilenler klasörünüzü kontrol edin.');
+}
+function exportAllJSONNow() {
+  const participants = gatherAllLocalRecordsForExport();
+  const codes = Object.keys(participants);
+  if (!codes.length) { alert('Bu tarayıcıda henüz kayıtlı hiçbir katılımcı verisi yok.'); return; }
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const jsonPayload = { exportedAt: new Date().toISOString(), kaynak: 'tarayici_yerel_disa_aktarim', katilimciSayisi: codes.length, participants: participants };
+  downloadTextFile('salhane_tum_veri_' + ts + '.json', 'application/json;charset=utf-8', JSON.stringify(jsonPayload, null, 2));
+  alert('Tüm veri (Faz 1 + Faz 2 + Anket, ' + codes.length + ' katılımcı) yedek olarak indirildi (.json). İndirilenler klasörünüzü kontrol edin.');
+}
+// Faz 2 (grup oylaması) için ayrı CSV: Faz 1 tablosuyla aynı mantık, ayrı
+// sütun şeması (responseType/chosenPoint/lat/lon/reason — bkz. saveFaz2Option).
+function exportFaz2CSV(participants) {
+  const headers = ['Katilimci_Kodu', 'Secenek_Kodu', 'Yanit_Turu', 'Secilen_Nokta', 'Enlem', 'Boylam', 'Gerekce'];
+  const rows = [headers.map(csvEscapeField).join(',')];
+  Object.keys(participants).sort().forEach(code => {
+    const faz2 = participants[code].faz2 || {};
+    Object.keys(faz2).forEach(optCode => {
+      const r = faz2[optCode] || {};
+      const row = [code, optCode, r.responseType || '', (r.chosenPoint !== undefined && r.chosenPoint !== '') ? r.chosenPoint : '', r.lat, r.lon, r.reason || ''];
+      rows.push(row.map(csvEscapeField).join(','));
+    });
+  });
+  return '﻿' + rows.join('\r\n');
+}
+function exportFaz2CSVNow() {
+  const participants = gatherAllLocalRecordsForExport();
+  const codes = Object.keys(participants).filter(c => Object.keys(participants[c].faz2 || {}).length);
+  if (!codes.length) { alert('Bu tarayıcıda henüz kayıtlı hiçbir Faz 2 verisi yok.'); return; }
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const csv = exportFaz2CSV(gatherAllLocalRecordsForExport());
+  downloadTextFile('salhane_faz2_' + ts + '.csv', 'text/csv;charset=utf-8', csv);
+  alert('Faz 2 tablosu indirildi (.csv — doğrudan Excel ile açılır). İndirilenler klasörünüzü kontrol edin.');
+}
+// Anket (açık uçlu sorular + POST ilk-üç-öncelik sıralaması) için ayrı CSV.
+// surveyDraft hem "pre" hem "post" uygulamasını barındırabildiğinden
+// (bkz. SURVEY_STORE_PREFIX), her ikisi de ayrı satır olarak yazılır.
+function exportSurveyCSV(participants) {
+  const qCount = (typeof DATA !== 'undefined' && DATA.postOpenEnded && DATA.postOpenEnded.length) || 3;
+  const headers = ['Katilimci_Kodu', 'Anket_Uygulamasi', 'Tamamlandi_Mi'];
+  for (let i = 1; i <= qCount; i++) headers.push('Acik_Soru_' + i);
+  for (let p = 1; p <= 3; p++) { headers.push('Oncelik_' + p + '_Kod'); headers.push('Oncelik_' + p + '_Gerekce'); }
+  const rows = [headers.map(csvEscapeField).join(',')];
+  Object.keys(participants).sort().forEach(code => {
+    const survey = participants[code].survey || {};
+    Object.keys(survey).sort().forEach(app => {
+      const s = survey[app] || {};
+      const row = [code, app, s.submitted ? 'EVET' : 'HAYIR'];
+      for (let i = 1; i <= qCount; i++) row.push((s.openAnswers && s.openAnswers['o' + i]) || '');
+      const priorities = Array.isArray(s.priorities) ? s.priorities : [];
+      for (let p = 0; p < 3; p++) {
+        row.push((priorities[p] && priorities[p].code) || '');
+        row.push((priorities[p] && priorities[p].reason) || '');
+      }
+      rows.push(row.map(csvEscapeField).join(','));
+    });
+  });
+  return '﻿' + rows.join('\r\n');
+}
+function exportSurveyCSVNow() {
+  const participants = gatherAllLocalRecordsForExport();
+  const codes = Object.keys(participants).filter(c => Object.keys(participants[c].survey || {}).length);
+  if (!codes.length) { alert('Bu tarayıcıda henüz kayıtlı hiçbir anket verisi yok.'); return; }
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const csv = exportSurveyCSV(gatherAllLocalRecordsForExport());
+  downloadTextFile('salhane_anket_' + ts + '.csv', 'text/csv;charset=utf-8', csv);
+  alert('Anket tablosu indirildi (.csv — doğrudan Excel ile açılır). İndirilenler klasörünüzü kontrol edin.');
+}
+
 function renderRecordingModePanel() {
   const el = document.getElementById('recordingModePanel');
   if (!el) return;
@@ -1886,8 +2047,16 @@ function renderRecordingModePanel() {
     <button id="rmToggleBtn" class="rmBtn"${REAL_MODE_LOCKED ? ' disabled title="Gerçek kayıt veri toplama gününe kadar kilitlidir"' : ''}>${REAL_MODE_LOCKED ? 'Gerçek Kayıt: Kilitli' : (isReal ? 'Deneme Moduna Dön' : 'Gerçek Kayıt Moduna Geç')}</button>
     <div class="rmStatus ${pilotOn ? 'rmReal' : 'rmPractice'}" style="margin-top:8px;">${pilotOn ? '● PİLOT KAYIT AÇIK' : '○ Pilot Kayıt kapalı'}</div>
     <button id="rmPilotToggleBtn" class="rmBtn" title="Kurumsal olmayan gerçek kişilerle deneme yaparken Faz 1/Faz 2 kayıtlarını, resmi veriden ayrı ve 'pilot' etiketiyle Google E-Tablo'ya da gönderir.">${pilotOn ? 'Pilot Kaydı Kapat' : 'Pilot Kaydı Aç'}</button>
+    <button id="rmExportCsvBtn" class="rmBtn" style="margin-top:8px; background:#1a7a4a; color:#fff; border-color:#1a7a4a;" title="Bu tarayıcıda kayıtlı TÜM katılımcıların Faz 1 (harita yerleştirme) verisini, internete/Google E-Tablo'ya hiç bağlı olmadan, bilgisayarınıza Excel'de açılan bir CSV olarak indirir.">⬇ Faz 1 Tablosunu İndir (.csv)</button>
+    <button id="rmExportFaz2Btn" class="rmBtn" style="margin-top:6px; background:#1a7a4a; color:#fff; border-color:#1a7a4a;" title="Bu tarayıcıda kayıtlı TÜM katılımcıların Faz 2 (grup oylaması) verisini, internete/Google E-Tablo'ya hiç bağlı olmadan, bilgisayarınıza Excel'de açılan bir CSV olarak indirir.">⬇ Faz 2 Tablosunu İndir (.csv)</button>
+    <button id="rmExportSurveyBtn" class="rmBtn" style="margin-top:6px; background:#1a7a4a; color:#fff; border-color:#1a7a4a;" title="Bu tarayıcıda kayıtlı TÜM katılımcıların anket (açık uçlu sorular + ilk üç öncelik) verisini, internete/Google E-Tablo'ya hiç bağlı olmadan, bilgisayarınıza Excel'de açılan bir CSV olarak indirir.">⬇ Anket Tablosunu İndir (.csv)</button>
+    <button id="rmExportJsonBtn" class="rmBtn" style="margin-top:6px;" title="Faz 1 + Faz 2 + Anket dahil TÜM veriyi tam yedek olarak (.json) indirir.">⬇ Tüm Veriyi Yedekle (.json)</button>
     <button id="rmClearBtn" class="rmBtn rmClearBtn">Bu Oturumun Kayıtlarını Sil</button>
   `;
+  document.getElementById('rmExportCsvBtn').onclick = exportFaz1CSVNow;
+  document.getElementById('rmExportFaz2Btn').onclick = exportFaz2CSVNow;
+  document.getElementById('rmExportSurveyBtn').onclick = exportSurveyCSVNow;
+  document.getElementById('rmExportJsonBtn').onclick = exportAllJSONNow;
   document.getElementById('rmPilotToggleBtn').onclick = () => setPilotRecording(!pilotOn);
   document.getElementById('rmToggleBtn').onclick = () => {
     if (REAL_MODE_LOCKED) return;
