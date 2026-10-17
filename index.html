@@ -2204,12 +2204,15 @@ let faz1Answers = {};
 let faz1Draft = { optionCode: null, placement: null };
 let faz1PlacementArmed = false;
 let faz1PlacementMarker = null;
-// Şimdiye kadar YERLEŞTİRİLMİŞ (kaydedilmiş) tüm noktaları, kodlarıyla (A, B,
-// C...) birlikte haritada kalıcı olarak gösteren katman. Yalnızca aktif
-// katılımcının değil, bu tarayıcıda (localStorage — "Bu Oturumun Kayıtlarını
-// Sil" butonuna basılana kadar kalıcıdır) kayıtlı TÜM katılımcıların
-// kayıtlarını tarar — böylece 15 katılımcı sırayla oynadıkça herkesin
-// işaretlediği noktalar haritada birikerek görünür.
+// Aktif katılımcının o ana kadar YERLEŞTİRDİĞİ (kaydettiği) noktaları,
+// kodlarıyla (A, B, C...) birlikte haritada gösteren katman. Kolaylaştırıcı
+// isteğiyle (bkz. getAllFaz1RecordsAcrossParticipants): yalnızca O AN AKTİF
+// olan katılımcının kendi kayıtları gösterilir — önceki katılımcıya
+// geçildiğinde onun işaretlemeleri haritada KALMAZ, yeni katılımcı
+// etkilenmeden bağımsız yerleştirme yapar. Tüm katılımcıların verisi yine
+// de localStorage'da ("Bu Oturumun Kayıtlarını Sil" butonuna basılana kadar
+// kalıcıdır) ve (Gerçek/Pilot Kayıt açıksa) Google E-Tablo'da eksiksiz durur;
+// yalnızca haritadaki GÖRÜNÜRLÜK kısıtlanmıştır.
 const faz1AllMarkersLayer = L.layerGroup().addTo(map);
 renderAllFaz1Markers();
 
@@ -2340,6 +2343,14 @@ function getAllFaz1RecordsAcrossParticipants() {
     // Kişisel link / düzeltme modunda yalnızca o katılımcının işaretleri gösterilir
     // (aynı cihazı kullanan önceki katılımcıların işaretleri görünmez).
     if (/[?&](k|y)=/.test(location.search) && code !== window.linkCode) continue;
+    // Kolaylaştırıcı isteği (hem DENEME hem GERÇEK kayıt modunda geçerli):
+    // bir katılımcıdan diğerine geçildiğinde ÖNCEKİ katılımcının
+    // yerleştirmeleri haritada GÖRÜNMESİN — her katılımcı bağımsız, önceki
+    // kişinin seçimlerinden etkilenmeden kendi işaretlemesini yapabilsin.
+    // Bu yalnızca GÖRÜNÜRLÜĞÜ kısıtlar; veri (koordinatlar, cevaplar) her
+    // zamanki gibi FAZ1_STORE_PREFIX altında ve (açıksa) Google E-Tablo'da
+    // eksiksiz kaydedilmeye devam eder, hiçbir şey silinmez.
+    if (!activeParticipantCode || code !== activeParticipantCode) continue;
     let answers;
     try { answers = JSON.parse(localStorage.getItem(k) || '{}'); } catch (e) { answers = {}; }
     Object.keys(answers).forEach(optCode => {
