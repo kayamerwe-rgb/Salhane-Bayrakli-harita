@@ -2168,6 +2168,37 @@ function nearestGuzergahPoint(lat, lon) {
 
 // ---- Katılımcı yönetimi ----
 const FAZ1_STORE_PREFIX = 'bikemap_faz1_v1_';
+// ---- Faz 1 "yarım kalan" taslak ----
+// Merve'nin bildirdiği sorun: bir opsiyonu haritaya yerleştirip sihirbazdaki
+// sorulara başladıktan sonra "Tanıtım Sayfasına Dön" ile ana sayfaya
+// dönülüp "Oyuna Geri Dön" ile geri gelindiğinde, henüz "Kaydet" ile
+// bitirilmemiş o opsiyonun yerleştirmesi ve o ana kadar verilmiş cevaplar
+// kayboluyordu (pcSetBtn tıklaması faz1Draft'ı sıfırlıyordu). Bu anahtar,
+// faz1Draft'ı -henüz Kaydet'e basılmamış haliyle- katılımcı bazında ayrıca
+// saklar; Kaydet'e basılınca (bkz. saveFaz1Option) silinir, çünkü o veri
+// artık FAZ1_STORE_PREFIX altında kalıcı kayda geçmiştir.
+const FAZ1_DRAFT_STORE_PREFIX = 'bikemap_faz1_draft_v1_';
+function saveFaz1DraftLocal(code, draft) {
+  if (!code) return;
+  try {
+    if (draft && draft.optionCode && draft.placement) {
+      const toStore = Object.assign({}, draft, { wizardIdx: faz1WizardIdx });
+      delete toStore.__resumeIdx;
+      localStorage.setItem(FAZ1_DRAFT_STORE_PREFIX + code, JSON.stringify(toStore));
+    } else {
+      localStorage.removeItem(FAZ1_DRAFT_STORE_PREFIX + code);
+    }
+  } catch (e) {}
+}
+function loadFaz1DraftLocal(code) {
+  if (!code) return null;
+  try { return JSON.parse(localStorage.getItem(FAZ1_DRAFT_STORE_PREFIX + code) || 'null'); }
+  catch (e) { return null; }
+}
+function clearFaz1DraftLocal(code) {
+  if (!code) return;
+  try { localStorage.removeItem(FAZ1_DRAFT_STORE_PREFIX + code); } catch (e) {}
+}
 let activeParticipantCode = null;
 let faz1Answers = {};
 let faz1Draft = { optionCode: null, placement: null };
@@ -2342,9 +2373,19 @@ document.getElementById('pcSetBtn').addEventListener('click', () => {
   faz1Answers = loadFaz1Answers(activeParticipantCode);
   const roster = PARTICIPANT_ROSTER.find(p => p.code === code);
   document.getElementById('pcActive').textContent = 'Aktif katılımcı: ' + activeParticipantCode + (roster ? ' (' + roster.catLabel + ')' : '');
-  faz1Draft = { optionCode: null, placement: null };
+  // Yarım kalmış (henüz Kaydet'e basılmamış) bir Faz 1 taslağı varsa -ör.
+  // "Tanıtım Sayfasına Dön" ile ayrılıp "Oyuna Geri Dön" ile geri gelindiyse-
+  // onu sıfırlamak yerine geri yükle: yerleştirme işaretçisi ve o ana kadar
+  // verilmiş cevaplar kaybolmasın.
+  const restoredFaz1Draft = loadFaz1DraftLocal(activeParticipantCode);
+  if (restoredFaz1Draft && restoredFaz1Draft.optionCode && restoredFaz1Draft.placement) {
+    faz1Draft = restoredFaz1Draft;
+    faz1Draft.__resumeIdx = (typeof restoredFaz1Draft.wizardIdx === 'number') ? restoredFaz1Draft.wizardIdx : 0;
+  } else {
+    faz1Draft = { optionCode: null, placement: null };
+  }
   disarmFaz1Placement();
-  if (faz1PlacementMarker) { map.removeLayer(faz1PlacementMarker); faz1PlacementMarker = null; }
+  updateFaz1PlacementMarker();
   renderFaz1OptionList();
   renderFaz1Progress();
   document.getElementById('faz1Detail').innerHTML = '<div style="color:var(--muted); font-size:12.5px; text-align:center; padding:24px 0;">Yukarıdan bir seçenek seçin.</div>';
@@ -2659,6 +2700,7 @@ function setFaz1Placement(lat, lon, type, guzergahNo, superblok) {
   // sorularını (NA seçenekli 4 boyut + gerekçe metinleri) ekranın ortasında,
   // tek tek, cevaplandıkça bir sonrakine geçen bir akış olarak göster.
   openFaz1Wizard();
+  saveFaz1DraftLocal(activeParticipantCode, faz1Draft);
 }
 
 function saveFaz1Option() {
@@ -2689,6 +2731,7 @@ function saveFaz1Option() {
   };
   faz1Answers[record.optionCode] = record;
   saveFaz1Answers(activeParticipantCode, faz1Answers);
+  clearFaz1DraftLocal(activeParticipantCode);
 
   const faz1SheetPayload = {
     participantCode: activeParticipantCode,
@@ -2794,8 +2837,12 @@ function buildFaz1WizardSteps() {
 function openFaz1Wizard() {
   faz1WizardSteps = buildFaz1WizardSteps();
   if (faz1WizardLastOptionCode !== faz1Draft.optionCode) {
-    faz1WizardIdx = 0;
+    // Geri yüklenmiş (kaydedilmemiş) bir taslaksa, sıfırdan değil kaldığı
+    // sorudan devam ettir — bkz. pcSetBtn tıklaması ve saveFaz1DraftLocal.
+    faz1WizardIdx = (typeof faz1Draft.__resumeIdx === 'number') ? faz1Draft.__resumeIdx : 0;
+    faz1WizardIdx = Math.max(0, Math.min(faz1WizardIdx, faz1WizardSteps.length - 1));
   }
+  delete faz1Draft.__resumeIdx;
   faz1WizardLastOptionCode = faz1Draft.optionCode;
   document.getElementById('faz1WizardOverlay').style.display = 'flex';
   renderFaz1WizardStep();
@@ -2902,6 +2949,7 @@ function faz1WizardTransitionTo(nextIdx) {
   setTimeout(() => {
     faz1WizardIdx = nextIdx;
     renderFaz1WizardStep();
+    saveFaz1DraftLocal(activeParticipantCode, faz1Draft);
     void card.offsetWidth; // reflow: geri açılma geçişini her seferinde baştan tetikler
     card.classList.remove('faz1WizHidden');
   }, 1000);
@@ -2955,7 +3003,7 @@ function faz1WizardGoBack() {
 
 document.getElementById('faz1WizardNextBtn').addEventListener('click', faz1WizardGoNext);
 document.getElementById('faz1WizardBackBtn').addEventListener('click', faz1WizardGoBack);
-document.getElementById('faz1WizardCloseBtn').addEventListener('click', () => { faz1WizardCommitCurrentStep(); closeFaz1Wizard(); });
+document.getElementById('faz1WizardCloseBtn').addEventListener('click', () => { faz1WizardCommitCurrentStep(); saveFaz1DraftLocal(activeParticipantCode, faz1Draft); closeFaz1Wizard(); });
 
 // =========================================================================
 // PRE / POST ANKET — Faz 0 ve Faz 3 (Anket EK-3 v6 §Yanıt ölçeği, Kılavuz v13 §8)
@@ -3408,6 +3456,12 @@ function geriDonMesajGoster(mesaj) {
 }
 
 function ilerlemeyiKaydetVeTanitimaDon() {
+  // Güvenlik ağı: sihirbazda o an açık bir soru varsa onu da taslağa işleyip
+  // kaydet, böylece tanıtım sayfasına dönülürken hiçbir yanıt kaybolmaz.
+  if (typeof faz1WizardCommitCurrentStep === 'function' && document.getElementById('faz1WizardOverlay') && document.getElementById('faz1WizardOverlay').style.display !== 'none') {
+    faz1WizardCommitCurrentStep();
+  }
+  saveFaz1DraftLocal(activeParticipantCode, faz1Draft);
   const kayit = {
     savedAt: new Date().toISOString(),
     participantCode: activeParticipantCode,
