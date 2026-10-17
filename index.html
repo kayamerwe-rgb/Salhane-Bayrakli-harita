@@ -1841,6 +1841,23 @@ function setRecordingMode(mode) {
   sessionStorage.setItem(RECORDING_MODE_KEY, mode);
   renderRecordingModePanel();
 }
+// ---- PİLOT KAYIT anahtarı ----
+// REAL_MODE_LOCKED'dan tamamen BAĞIMSIZ, kolaylaştırıcının (Merve) bu
+// panelden serbestçe açıp kapatabildiği ikinci bir anahtar. Resmi "Gerçek
+// Kayıt Modu" hâlâ kilitli kalır; bu yalnızca kurumsal olmayan gerçek
+// katılımcılarla (ör. tanıtım/deneme ziyaretleri) yapılan etkileşimlerin
+// DENEME modunda bile kaybolmamasını, ama resmi protokol verisinden ayrı ve
+// açıkça etiketli ('pilot_' ön eki, bkz. postPilotToSheets) kalmasını sağlar.
+// Varsayılan KAPALI; tarayıcı/cihaz bazlıdır (localStorage), oturum bazlı
+// değildir.
+const PILOT_RECORDING_KEY = 'bikemap_pilot_recording_v1';
+function getPilotRecording() {
+  return localStorage.getItem(PILOT_RECORDING_KEY) === 'on';
+}
+function setPilotRecording(on) {
+  localStorage.setItem(PILOT_RECORDING_KEY, on ? 'on' : 'off');
+  renderRecordingModePanel();
+}
 // Katılımcı kayıtlarını (yalnızca Faz1/opsiyon yerleştirme + anket) KALICI
 // OLARAK siler — bu, DENEME MODU'nda veriyi silen TEK mekanizmadır ve
 // yalnızca bu buton (rmClearBtn) açıkça tıklanıp onaylandığında çalışır.
@@ -1863,11 +1880,15 @@ function renderRecordingModePanel() {
   if (!el) return;
   const mode = getRecordingMode();
   const isReal = mode === 'real';
+  const pilotOn = getPilotRecording();
   el.innerHTML = `
     <div class="rmStatus ${isReal ? 'rmReal' : 'rmPractice'}">${isReal ? '● GERÇEK KAYIT' : '● DENEME MODU'}</div>
     <button id="rmToggleBtn" class="rmBtn"${REAL_MODE_LOCKED ? ' disabled title="Gerçek kayıt veri toplama gününe kadar kilitlidir"' : ''}>${REAL_MODE_LOCKED ? 'Gerçek Kayıt: Kilitli' : (isReal ? 'Deneme Moduna Dön' : 'Gerçek Kayıt Moduna Geç')}</button>
+    <div class="rmStatus ${pilotOn ? 'rmReal' : 'rmPractice'}" style="margin-top:8px;">${pilotOn ? '● PİLOT KAYIT AÇIK' : '○ Pilot Kayıt kapalı'}</div>
+    <button id="rmPilotToggleBtn" class="rmBtn" title="Kurumsal olmayan gerçek kişilerle deneme yaparken Faz 1/Faz 2 kayıtlarını, resmi veriden ayrı ve 'pilot' etiketiyle Google E-Tablo'ya da gönderir.">${pilotOn ? 'Pilot Kaydı Kapat' : 'Pilot Kaydı Aç'}</button>
     <button id="rmClearBtn" class="rmBtn rmClearBtn">Bu Oturumun Kayıtlarını Sil</button>
   `;
+  document.getElementById('rmPilotToggleBtn').onclick = () => setPilotRecording(!pilotOn);
   document.getElementById('rmToggleBtn').onclick = () => {
     if (REAL_MODE_LOCKED) return;
     if (isReal) {
@@ -1909,6 +1930,24 @@ function postToSheets(type, data) {
   // okunamaz. Bu yüzden localStorage her zaman birincil ve kalıcı yerel yedek
   // olarak tutulur (bkz. FAZ1_STORE_PREFIX) ve tabloya düşen satırlar dönemsel
   // olarak Google E-Tablo üzerinden kontrol edilmelidir.
+  return fetch(CONFIG.sheetsUrl, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(body)
+  }).then(() => true).catch(() => false);
+}
+// ---- PİLOT KAYIT gönderimi ----
+// postToSheets'ten BAĞIMSIZ, ayrı bir yol: getRecordingMode()/REAL_MODE_LOCKED
+// koşuluna hiç bakmaz, yalnızca getPilotRecording() açıkken ve CONFIG.sheetsUrl
+// tanımlıyken çalışır. Gönderilen her satırın "type" alanının başına 'pilot_'
+// eklenir (ör. 'pilot_faz1') ve pilotRecording:true damgası eklenir; böylece
+// Google E-Tablo'da resmi/kurumsal kayıtlardan açıkça ayırt edilebilir. Kişisel
+// link / düzeltme modu (LINK_MODE) bu yola dahil değildir.
+function postPilotToSheets(type, data) {
+  if (!CONFIG.sheetsUrl) return Promise.resolve(false);
+  if (!getPilotRecording()) return Promise.resolve(false);
+  const body = Object.assign({ type: 'pilot_' + type, pilotRecording: true }, data);
   return fetch(CONFIG.sheetsUrl, {
     method: 'POST',
     mode: 'no-cors',
@@ -2651,7 +2690,7 @@ function saveFaz1Option() {
   faz1Answers[record.optionCode] = record;
   saveFaz1Answers(activeParticipantCode, faz1Answers);
 
-  postToSheets('faz1', {
+  const faz1SheetPayload = {
     participantCode: activeParticipantCode,
     participantCategory: getActiveParticipantCategoryCode(),
     optionCode: record.optionCode,
@@ -2665,7 +2704,9 @@ function saveFaz1Option() {
     interventionRationale: record.interventionRationale,
     locationRationale: record.locationRationale,
     facilitatorNote: record.facilitatorNote
-  });
+  };
+  postToSheets('faz1', faz1SheetPayload);
+  postPilotToSheets('faz1', faz1SheetPayload);
 
   renderFaz1OptionList();
   renderFaz1Progress();
@@ -3325,7 +3366,9 @@ function saveFaz2Option() {
   faz2Answers[code] = record;
   saveFaz2Answers(activeParticipantCode, faz2Answers);
 
-  postToSheets('faz2', Object.assign({ participantCode: activeParticipantCode, optionCode: code }, record));
+  const faz2SheetPayload = Object.assign({ participantCode: activeParticipantCode, optionCode: code }, record);
+  postToSheets('faz2', faz2SheetPayload);
+  postPilotToSheets('faz2', faz2SheetPayload);
 
   renderFaz2OptionList();
   renderFaz2Progress();
