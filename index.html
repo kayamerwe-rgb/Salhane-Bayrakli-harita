@@ -1986,13 +1986,18 @@ function exportAllJSONNow() {
 // Faz 2 (grup oylaması) için ayrı CSV: Faz 1 tablosuyla aynı mantık, ayrı
 // sütun şeması (responseType/chosenPoint/lat/lon/reason — bkz. saveFaz2Option).
 function exportFaz2CSV(participants) {
-  const headers = ['Katilimci_Kodu', 'Secenek_Kodu', 'Yanit_Turu', 'Secilen_Nokta', 'Enlem', 'Boylam', 'Gerekce'];
+  const headers = ['Katilimci_Kodu', 'Secenek_Kodu', 'Yanit_Turu', 'Secilen_Nokta', 'Enlem', 'Boylam', 'Gerekce',
+    'Asama', 'Surum', 'Oy_Kilit_Zamani', 'F2_Anlam_Etiketleri', 'F2_Anlam_Aciklama', 'F1_Anlam_Etiketleri', 'F1_Anlam_Aciklama',
+    'Anlam_Ortusme_Jaccard', 'Yansima', 'Yansima_Aciklama', 'En_Yakin_Aday', 'En_Yakin_Mesafe_m', 'Secilen_Mesafe_m', 'En_Yakina_Oy', 'F1_Kaydi_Yok'];
   const rows = [headers.map(csvEscapeField).join(',')];
   Object.keys(participants).sort().forEach(code => {
     const faz2 = participants[code].faz2 || {};
     Object.keys(faz2).forEach(optCode => {
       const r = faz2[optCode] || {};
-      const row = [code, optCode, r.responseType || '', (r.chosenPoint !== undefined && r.chosenPoint !== '') ? r.chosenPoint : '', r.lat, r.lon, r.reason || ''];
+      const v = x => (x === undefined || x === null) ? '' : x;
+      const row = [code, optCode, r.responseType || '', (r.chosenPoint !== undefined && r.chosenPoint !== '') ? r.chosenPoint : '', r.lat, r.lon, r.reason || '',
+        v(r.asama), v(r.surum), v(r.voteLockedAt), v(r.meaningTags), v(r.meaningText), v(r.p1Tags), v(r.p1Text),
+        v(r.anlamOrtusme), v(r.reflection), v(r.reflectionText), v(r.enYakinAday), v(r.enYakinMesafe_m), v(r.secilenMesafe_m), v(r.enYakinaOy), r.p1Yok ? 'EVET' : ''];
       rows.push(row.map(csvEscapeField).join(','));
     });
   });
@@ -2267,7 +2272,19 @@ function buildSurveyScaleReminder() {
   return box;
 }
 const SURVEY_LOCK_MESSAGE = "Bu anket, Merve Kaya ile yapılan Faz 1 oturumunda (yüz yüze veya çevrimiçi) cevaplanacaktır.";
-const FAZ2_LOCK_MESSAGE = "Faz 2 oylaması tüm katılımcıların Faz 1 sonuçları toplulaştırıldıktan sonra başka bir gün yapılacak; her opsiyon için Faz 1 toplu dağılımının en yoğun olduğu yerlerden belirlenen 3 nokta (Nokta 1, 2, 3) arasında oylama yapmanız istenecektir. Değerlendiremediğiniz bir opsiyon için NA seçebilir, oyunuzun temel nedenini kısaca yazabilirsiniz. Faz 2'de oylamanın açılış günü ve saati ayrıca bildirilecektir. Her katılımcı müsait olduğu bir zaman diliminde bu oylamayı uzaktan yapabilecektir.";
+const FAZ2_LOCK_MESSAGE = "Faz 2 tüm katılımcıların Faz 1 sonuçları toplulaştırıldıktan sonra başka bir gün çevrimiçi yapılacak (yaklaşık 20-30 dakika). Her müdahale için üç kısa adım vardır: (1) Faz 1 toplu dağılımının en yoğun olduğu yerlerden kuralla belirlenen 3 nokta (Nokta 1, 2, 3) arasından birini ya da NA'yı seçip oyunuzu kilitlersiniz; (2) seçtiğiniz noktanın sizce öncelikli anlamını Faz 1'deki aynı etiketlerle işaretlersiniz; (3) ardından yalnızca kendi Faz 1 kaydınızı görür, anlamınızın korunup korunmadığını belirtirsiniz. Doğru ya da yanlış yanıt yoktur. Başka katılımcıların bireysel tercihleri gösterilmez. Açılış günü ve saati ayrıca bildirilecektir.";
+// Faz 2 sekmesi: DENEME modunda (aktif katılımcı kodu "TEST") her zaman açıktır.
+// GERÇEK kayıt modunda (kişisel link ya da gerçek bir KK kodu) FAZ2_ACIK true olana
+// kadar kilitli kalır — bu, Merve'nin 18 Eki 2026 kararı: "faz2 deneme modunda açık,
+// gerçek kayıt modunda kilitli kalsın". FAZ2_ACIK'ı true yapmak gerçek katılımcılar
+// için de açar; o karar ayrıca verilecek.
+const FAZ2_ACIK = false;
+function faz2SekmesiAcikMi() {
+  if (activeParticipantCode === 'TEST') return true;
+  if (FAZ2_ACIK) return true;
+  const linksiz = (typeof LINK_MODE === 'undefined') || !LINK_MODE;
+  return linksiz && new URLSearchParams(location.search).get('faz2') === 'test';
+}
 
 const SB_ORDER = ['SB1', 'SB2', 'SB3', 'SB4', 'SB5'];
 
@@ -2340,12 +2357,16 @@ function applyModeSwitch(btn) {
     disarmFaz1Placement();
   }
   if (currentMode !== 'faz2') clearFaz2Highlight();
+  // Faz 2'de Faz 1 işaretçileri (kendi noktaları dahil, kodlu açılır pencereleriyle) gizlenir:
+  // kendi Faz 1 kaydı yalnız Adım 3'te, oy ve anlam kilitlendikten sonra gösterilir.
+  if (currentMode === 'faz2') { if (map.hasLayer(faz1AllMarkersLayer)) map.removeLayer(faz1AllMarkersLayer); }
+  else if (!map.hasLayer(faz1AllMarkersLayer)) faz1AllMarkersLayer.addTo(map);
   if (currentMode === 'survey' && activeParticipantCode) { initSurveyForParticipant(); openSurveyCenterModal(); }
   if (currentMode === 'faz2' && activeParticipantCode) initFaz2ForParticipant();
 }
 document.querySelectorAll('#modeTabs .modeTabBtn').forEach(btn => {
   btn.addEventListener('click', () => {
-    if (btn.dataset.mode === 'faz2') { showInfoModal(FAZ2_LOCK_MESSAGE); return; }
+    if (btn.dataset.mode === 'faz2' && !faz2SekmesiAcikMi()) { showInfoModal(FAZ2_LOCK_MESSAGE); return; }
     if (btn.dataset.mode === currentMode) return;
     // Merve isteğiyle: Faz 1'den Anket'e geçerken, tüm yerleştirmelerin
     // tamamlandığından emin olunması için ekranın ortasında bir onay
@@ -3551,18 +3572,21 @@ function fetchFaz2Candidates() {
 
 function initFaz2ForParticipant() {
   faz2Answers = loadFaz2Answers(activeParticipantCode);
-  faz2Draft = { optionCode: null, choice: null, reason: '' };
+  faz2Draft = faz2BosTaslak(null);
   clearFaz2Highlight();
   renderFaz2OptionList();
   renderFaz2Progress();
   document.getElementById('faz2Detail').innerHTML = '<div style="color:var(--muted); font-size:12.5px; text-align:center; padding:24px 0;">Bir müdahale seçin.</div>';
 }
 
+// Bir müdahalenin Faz 2 kaydı tamamlandı mı? (oy + anlam + yansıma, ya da NA/boş)
+function faz2Tamam(rec) { return !!(rec && rec.asama === 'tamamlandi'); }
+
 function renderFaz2Progress() {
   const el = document.getElementById('faz2Progress');
   if (!activeParticipantCode) { el.textContent = 'Önce yukarıdan katılımcı kodunu belirleyin.'; return; }
-  const done = DATA.optionCatalog.filter(o => faz2Answers[o.code]).length;
-  el.innerHTML = '<b style="color:var(--text)">' + done + ' / ' + DATA.optionCatalog.length + '</b> seçenek oylandı';
+  const done = DATA.optionCatalog.filter(o => faz2Tamam(faz2Answers[o.code])).length;
+  el.innerHTML = '<b style="color:var(--text)">' + done + ' / ' + DATA.optionCatalog.length + '</b> müdahale tamamlandı';
 }
 
 function renderFaz2OptionList() {
@@ -3570,29 +3594,43 @@ function renderFaz2OptionList() {
   listEl.innerHTML = '';
   DATA.optionCatalog.forEach(o => {
     const row = document.createElement('div');
-    const done = !!faz2Answers[o.code];
+    const rec = faz2Answers[o.code];
+    const done = faz2Tamam(rec);
+    const yarim = !!(rec && rec.voteLockedAt && !done);
     const hasCand = !!faz2Candidates[o.code];
     row.className = 'faz1OptRow' + (done ? ' done' : '') + (faz2Draft.optionCode === o.code ? ' active' : '');
     if (!hasCand) row.style.opacity = '0.55';
-    row.innerHTML = '<span class="badge">' + o.code + '</span><span class="name">' + o.name + '</span><span class="mark">' + (done ? '✓' : (hasCand ? '' : '—')) + '</span>';
+    row.innerHTML = '<span class="badge">' + o.code + '</span><span class="name">' + o.name + '</span><span class="mark">' + (done ? '✓' : (yarim ? '…' : (hasCand ? '' : '—'))) + '</span>';
     row.addEventListener('click', () => selectFaz2Option(o.code));
     listEl.appendChild(row);
   });
 }
 
 // ---------------------------------------------------------------------------
-// FAZ 2 — OYLAMA (Başvuru/Onam: "grup kararı oylaması"; Ek-1 Faz 2 formu)
-// Faz 1 bittikten sonra araştırmacı, her müdahale için toplu dağılımın en
-// yoğun olduğu yerlerden 3 noktayı belirler (Nokta 1, 2, 3) ve aşağıdaki
-// FAZ2_ONERILEN_NOKTALAR sabitine işler. Katılımcı bu 3 nokta arasında oy verir.
-// En çok oy alan nokta kazanır; en yüksek oyda eşitlik varsa eşit noktaların
-// hepsi o müdahale için öne çıkan nokta olarak kalır (oyunda tekrar oylama yok).
-// Ek-1 Faz 2 formu: (1) "Bu müdahale için şimdi hangi noktayı seçersiniz? /
-// NA-Değerlendiremiyorum"  (2) "Bu yanıtınızın temel nedeni nedir?"
-// Ek-1: "İlgili müdahaleye ait kimliksiz ve toplulaştırılmış mekânsal dağılım
-// gösterilir" -> FAZ2_DAGILIM'daki Faz 1 noktaları kimliksiz gri nokta olarak çizilir.
-// Protokol: yanıt vermeme hakkı korunur; boş yanıt ve NA ayrı kaydedilir ve
-// oy sayımına girmez.
+// FAZ 2 — OYLAMA VE YANSITICI YENİDEN DEĞERLENDİRME (v2, 18 Eki 2026)
+//
+// Amaç: MCP'nin temel önermesini sınamak. Aynı noktayı seçmek aynı anlamı
+// paylaşmak demek değildir; ilk yargı toplu kanıt görülmeden kaydedilir ve
+// sonraki seçim onun üzerine yazılmaz.
+//
+// Her müdahale için üç adım (yaklaşık 1 dk):
+//   Adım 1 · OY: kimliksiz toplu dağılım + 3 aday (Nokta 1-2-3) görülür; aday
+//            ya da NA seçilir; oy KİLİTLENİR (katılımcı değiştiremez; yalnız
+//            araştırmacı düzeltme modu yeni sürüm ekleyebilir).
+//   Adım 2 · ANLAM: seçilen nokta için Faz 1'deki AYNI etiket listesinden 1-2
+//            etiket + isteğe bağlı kısa gerekçe (aynı araçla ölçüm).
+//   Adım 3 · YANSIMA: oy ve anlam kaydedildikten SONRA katılımcının yalnızca
+//            KENDİ Faz 1 noktası ve etiketleri gösterilir; anlamın korundu /
+//            koşullandı / değişti / emin değilim beyanı + isteğe bağlı neden.
+//            Bu yanıt ayrı alan olarak EKLENİR; oy ve anlam değişmez.
+// Oturum sonu: seçilmeyen adaylardan korunması/eklenmesi istenen öğe sorusu.
+//
+// Kendi Faz 1 kaydı oydan ÖNCE gösterilmez (çapa etkisi ve tutarlılık baskısı
+// oluşmasın diye). Mekânsal eksen otomatik hesaplanır ve katılımcıya
+// gösterilmez: kendi Faz 1 noktasına en yakın aday, mesafeler, en yakına oy.
+// Başka katılımcıların bireysel tercihleri ve gerekçeleri hiçbir adımda
+// gösterilmez. Yanıt vermeme hakkı korunur: boş geçilen müdahale 'yanitsiz'
+// kaydedilir ve oy sayımına girmez.
 // ---------------------------------------------------------------------------
 
 // Faz 1 sonrası doldurulacak. Örnek:
@@ -3604,6 +3642,14 @@ const FAZ2_ONERILEN_NOKTALAR = {
 const FAZ2_DAGILIM = {
 };
 
+const FAZ2_YANSIMA_SECENEKLERI = [
+  { v: 'korundu', t: 'Korundu · Faz 1\'deki anlamım aynı' },
+  { v: 'kosullandi', t: 'Koşullandı · aynı anlam, ama bir şey ekledim ya da daralttım' },
+  { v: 'degisti', t: 'Değişti · bu noktaya artık farklı bir anlam yüklüyorum' },
+  { v: 'emin_degil', t: 'Emin değilim' }
+];
+const FAZ2_KAPANIS_KODU = '_kapanis';
+
 function faz2ApplyResearcherPoints() {
   Object.keys(FAZ2_ONERILEN_NOKTALAR).forEach(code => {
     const pts = FAZ2_ONERILEN_NOKTALAR[code] || [];
@@ -3613,61 +3659,162 @@ function faz2ApplyResearcherPoints() {
 faz2ApplyResearcherPoints();
 
 function faz2PointLatLon(c) {
+  if (!c) return null;
   if (c.lat !== undefined && c.lon !== undefined) return [c.lat, c.lon];
   const gp = DATA.guzergahPoints.find(p => p.guzergahNo === c.guzergahNo);
   return gp ? [gp.lat, gp.lon] : null;
 }
 
+function faz2BosTaslak(code) {
+  return { optionCode: code, stage: 'oy', choice: null, reason: '', tags: '', meaningText: '', reflection: '', reflectionText: '' };
+}
+
+function faz2DuzeltmeModu() { return typeof LINK_MODE !== 'undefined' && LINK_MODE === 'duzeltme'; }
+
+// Katılımcının kendi Faz 1 kaydı (yalnız Adım 3'te gösterilir).
+function faz2KendiFaz1(code) {
+  const f1 = loadFaz1Answers(activeParticipantCode) || {};
+  const r = f1[code];
+  if (!r || r.notApplicable || r.lat === null || r.lat === undefined || r.lat === '') return null;
+  return { lat: Number(r.lat), lon: Number(r.lon), tags: r.interventionRationale || '', text: r.locationRationale || '' };
+}
+
+function faz2Mesafe(a, b) {
+  if (!a || !b) return null;
+  return Math.round(L.latLng(a[0], a[1]).distanceTo(L.latLng(b[0], b[1])));
+}
+
+function faz2Ortusme(a, b) {
+  const A = faz1TagsFromString(a), B = faz1TagsFromString(b);
+  if (!A.length && !B.length) return '';
+  const kes = A.filter(x => B.indexOf(x) !== -1).length;
+  const bir = A.concat(B.filter(x => A.indexOf(x) === -1)).length;
+  return bir ? Math.round((kes / bir) * 100) / 100 : '';
+}
+
 function selectFaz2Option(code) {
   if (!activeParticipantCode) { alert('Önce katılımcı kodunu belirleyin.'); return; }
   const ex = faz2Answers[code];
-  faz2Draft = { optionCode: code, choice: null, reason: '' };
+  faz2Draft = faz2BosTaslak(code);
   if (ex) {
     if (ex.responseType === 'nokta') faz2Draft.choice = 'nokta' + (ex.chosenPoint - 1);
     else if (ex.responseType === 'NA') faz2Draft.choice = 'NA';
     faz2Draft.reason = ex.reason || '';
+    faz2Draft.tags = ex.meaningTags || '';
+    faz2Draft.meaningText = ex.meaningText || '';
+    faz2Draft.reflection = ex.reflection || '';
+    faz2Draft.reflectionText = ex.reflectionText || '';
+    if (faz2DuzeltmeModu()) faz2Draft.stage = 'oy';
+    else if (ex.asama === 'tamamlandi') faz2Draft.stage = 'bitti';
+    else if (ex.asama === 'anlam_kaydedildi') faz2Draft.stage = 'yansima';
+    else if (ex.voteLockedAt) faz2Draft.stage = 'anlam';
   }
   renderFaz2OptionList();
   renderFaz2Detail();
 }
 
+function faz2Baslik(opt) {
+  return '<div style="display:flex; align-items:baseline; gap:8px; margin-bottom:10px;">' +
+    '<span class="badge" style="font-size:14px;">' + opt.code + '</span>' +
+    '<h3 style="margin:0; font-size:14px; font-weight:700;">' + opt.name + '</h3></div>';
+}
+function faz2AdimSeridi(aktif) {
+  const ad = ['1 · Oy', '2 · Anlam', '3 · Yansıma'];
+  return '<div style="display:flex; gap:6px; margin-bottom:12px;">' + ad.map((t, i) =>
+    '<span style="flex:1; text-align:center; font-size:11px; padding:4px 0; border-radius:6px; border:1px solid var(--border); ' +
+    (i === aktif ? 'background:var(--accent2); color:#08222f; font-weight:700;' : 'color:var(--muted);') + '">' + t + '</span>').join('') + '</div>';
+}
+function faz2OyOzeti(code) {
+  const ex = faz2Answers[code];
+  if (!ex) return '';
+  const t = ex.responseType === 'nokta' ? ('Nokta ' + ex.chosenPoint) : (ex.responseType === 'NA' ? 'NA · Değerlendiremiyorum' : 'Boş');
+  return '<div style="font-size:12px; padding:8px 10px; border-radius:8px; background:var(--panel2); border:1px solid var(--border); margin-bottom:12px;">Kilitlenen oyunuz: <b>' + t + '</b></div>';
+}
+function faz2Radyo(name, value, label, secili, kapali) {
+  return '<label style="display:flex; align-items:center; gap:8px; padding:9px 10px; margin-bottom:8px; border-radius:8px; border:1px solid var(--border); background:var(--panel2); cursor:' + (kapali ? 'default' : 'pointer') + '; font-size:12.5px;">' +
+    '<input type="radio" name="' + name + '" value="' + value + '" ' + (secili ? 'checked' : '') + (kapali ? ' disabled' : '') + ' style="accent-color:#3fa9f5;"><span>' + label + '</span></label>';
+}
+
 function renderFaz2Detail() {
   const el = document.getElementById('faz2Detail');
   const code = faz2Draft.optionCode;
+  if (code === FAZ2_KAPANIS_KODU) { renderFaz2Kapanis(); return; }
   const opt = DATA.optionCatalog.find(o => o.code === code);
   if (!opt) { el.innerHTML = '<div style="color:var(--muted); font-size:12.5px; text-align:center; padding:24px 0;">Bir müdahale seçin.</div>'; return; }
+  let html = faz2Baslik(opt);
+  const st = faz2Draft.stage;
 
-  const radioRow = (value, label) =>
-    '<label style="display:flex; align-items:center; gap:8px; padding:9px 10px; margin-bottom:8px; border-radius:8px; border:1px solid var(--border); background:var(--panel2); cursor:pointer; font-size:12.5px;">' +
-    '<input type="radio" name="faz2choice" value="' + value + '" ' + (faz2Draft.choice === value ? 'checked' : '') + ' style="accent-color:#3fa9f5;"><span>' + label + '</span></label>';
+  if (st === 'oy') {
+    const cand = faz2Candidates[code];
+    html += faz2AdimSeridi(0);
+    html += '<div style="font-size:11.5px; color:var(--muted); margin-bottom:10px;">Haritadaki gri noktalar tüm katılımcıların Faz 1 yerleştirmelerini kimliksiz olarak gösterir. Numaralı halkalar, en yoğun yerlerden kuralla belirlenen üç noktadır.</div>';
+    html += '<div class="section-label" style="padding-left:0; margin-top:6px;">1. Bu müdahale için şimdi hangi noktayı seçersiniz?</div>';
+    if (cand) cand.candidates.forEach((c, idx) => { html += faz2Radyo('faz2choice', 'nokta' + idx, 'Nokta ' + (idx + 1), faz2Draft.choice === 'nokta' + idx, false); });
+    else html += '<div style="font-size:12.5px; color:var(--muted); margin-bottom:10px;">Bu müdahale için noktalar henüz yüklenmedi.</div>';
+    html += faz2Radyo('faz2choice', 'NA', 'NA · Değerlendiremiyorum / uygulanabilir değil', faz2Draft.choice === 'NA', false);
+    html += '<div style="font-size:11px; color:var(--muted); margin-top:4px;">Oyunuz kaydedildikten sonra değiştirilemez. Seçim yapmadan geçerseniz bu müdahale boş kaydedilir.</div>';
+    html += '<button id="faz2OyBtn" class="faz1Btn primary" style="margin-top:14px; width:100%;">' + (faz2Draft.choice ? 'Oyumu kaydet ve kilitle' : 'Bu müdahaleyi boş geç') + '</button>';
+    el.innerHTML = html;
+    el.querySelectorAll('input[name="faz2choice"]').forEach(r => r.addEventListener('change', () => {
+      faz2Draft.choice = r.value;
+      document.getElementById('faz2OyBtn').textContent = 'Oyumu kaydet ve kilitle';
+      drawFaz2Layer();
+    }));
+    document.getElementById('faz2OyBtn').addEventListener('click', faz2OyuKilitle);
 
-  let html = '<div style="display:flex; align-items:baseline; gap:8px; margin-bottom:10px;">' +
-    '<span class="badge" style="font-size:14px;">' + opt.code + '</span>' +
-    '<h3 style="margin:0; font-size:14px; font-weight:700;">' + opt.name + '</h3></div>';
+  } else if (st === 'anlam') {
+    const na = faz2Draft.choice === 'NA';
+    html += faz2AdimSeridi(1) + faz2OyOzeti(code);
+    if (!na) {
+      html += '<div class="section-label" style="padding-left:0;">2. Seçtiğiniz bu noktanın sizce öncelikli anlamı nedir? <span style="font-weight:400; color:var(--muted); text-transform:none; letter-spacing:0;">(1-2 tane seçebilirsiniz)</span></div>';
+      html += '<div id="faz2TagPicker" class="faz1TagWrap"></div>';
+      html += '<div class="section-label" style="padding-left:0; margin-top:10px;">Aklınıza gelen başka bir kelime varsa yazın <span style="font-weight:400; color:var(--muted); text-transform:none; letter-spacing:0;">(Diğer / Başka anlam etiketini seçtiyseniz zorunludur)</span></div>';
+      html += '<input id="faz2MeaningText" type="text" class="faz1Input" style="width:100%;" value="' + escapeFaz2(faz2Draft.meaningText).replace(/"/g, '&quot;') + '">';
+    }
+    html += '<div class="section-label" style="padding-left:0; margin-top:12px;">' + (na ? '2' : '3') + '. Bu yanıtınızın temel nedeni nedir? <span style="font-weight:400; color:var(--muted); text-transform:none; letter-spacing:0;">(isteğe bağlı)</span></div>';
+    html += '<textarea id="faz2Reason" class="faz1Input" rows="3" style="width:100%; resize:vertical;">' + escapeFaz2(faz2Draft.reason) + '</textarea>';
+    html += '<button id="faz2AnlamBtn" class="faz1Btn primary" style="margin-top:14px; width:100%;">Kaydet ve devam et</button>';
+    el.innerHTML = html;
+    if (!na) {
+      const p = document.getElementById('faz2TagPicker');
+      const sec = faz1TagsFromString(faz2Draft.tags);
+      p.innerHTML = PRIORITY_TAGS.map(t => '<button type="button" class="faz1Tag' + (sec.indexOf(t) !== -1 ? ' active' : '') + '" data-tag="' + t + '">' + t + '</button>').join('');
+      p.querySelectorAll('.faz1Tag').forEach(b => b.addEventListener('click', () => {
+        const cur = faz1TagsFromString(faz2Draft.tags);
+        const i = cur.indexOf(b.dataset.tag);
+        if (i === -1) cur.push(b.dataset.tag); else cur.splice(i, 1);
+        faz2Draft.tags = faz1TagsToString(cur);
+        b.classList.toggle('active');
+      }));
+      document.getElementById('faz2MeaningText').addEventListener('input', e => { faz2Draft.meaningText = e.target.value; });
+    }
+    document.getElementById('faz2Reason').addEventListener('input', e => { faz2Draft.reason = e.target.value; });
+    document.getElementById('faz2AnlamBtn').addEventListener('click', faz2AnlamiKaydet);
 
-  const cand = faz2Candidates[code];
-  html += '<div style="font-size:11.5px; color:var(--muted); margin-bottom:10px;">Haritada gri noktalar tüm katılımcıların Faz 1 yerleştirmelerini kimliksiz olarak gösterir. Numaralı halkalar, en yoğun yerlerden belirlenen üç noktadır.</div>';
+  } else if (st === 'yansima') {
+    const ex = faz2Answers[code] || {};
+    html += faz2AdimSeridi(2) + faz2OyOzeti(code);
+    html += '<div style="font-size:12px; line-height:1.55; padding:10px; border-radius:8px; border:1px solid var(--border); margin-bottom:12px;">' +
+      '<div style="color:var(--muted); font-size:11px; margin-bottom:4px;">Faz 1\'de bu müdahale için (haritada turuncu nokta):</div>' +
+      '<div>Anlam: <b>' + escapeFaz2(ex.p1Tags || 'etiket seçilmemiş') + '</b>' + (ex.p1Text ? ' · ' + escapeFaz2(ex.p1Text) : '') + '</div>' +
+      '<div style="color:var(--muted); font-size:11px; margin:8px 0 4px;">Bugün seçtiğiniz nokta için:</div>' +
+      '<div>Anlam: <b>' + escapeFaz2(ex.meaningTags || 'etiket seçilmemiş') + '</b>' + (ex.meaningText ? ' · ' + escapeFaz2(ex.meaningText) : '') + '</div></div>';
+    html += '<div class="section-label" style="padding-left:0;">4. Bu müdahaleye yüklediğiniz anlam Faz 1\'e göre:</div>';
+    FAZ2_YANSIMA_SECENEKLERI.forEach(s => { html += faz2Radyo('faz2refl', s.v, s.t, faz2Draft.reflection === s.v, false); });
+    html += '<div class="section-label" style="padding-left:0; margin-top:10px;">5. Kısaca nedenini yazabilir misiniz? <span style="font-weight:400; color:var(--muted); text-transform:none; letter-spacing:0;">(isteğe bağlı)</span></div>';
+    html += '<textarea id="faz2ReflText" class="faz1Input" rows="2" style="width:100%; resize:vertical;">' + escapeFaz2(faz2Draft.reflectionText) + '</textarea>';
+    html += '<div style="font-size:11px; color:var(--muted); margin-top:4px;">Doğru ya da yanlış yanıt yoktur; anlamın korunması da değişmesi de aynı değerde bir kayıttır. Oyunuz ve anlam seçiminiz değişmez; bu yanıt ayrıca eklenir.</div>';
+    html += '<button id="faz2YansimaBtn" class="faz1Btn primary" style="margin-top:14px; width:100%;">Kaydet ve sonraki müdahaleye geç</button>';
+    el.innerHTML = html;
+    el.querySelectorAll('input[name="faz2refl"]').forEach(r => r.addEventListener('change', () => { faz2Draft.reflection = r.value; }));
+    document.getElementById('faz2ReflText').addEventListener('input', e => { faz2Draft.reflectionText = e.target.value; });
+    document.getElementById('faz2YansimaBtn').addEventListener('click', faz2YansimayiKaydet);
 
-  html += '<div class="section-label" style="padding-left:0; margin-top:6px;">1. Bu müdahale için şimdi hangi noktayı seçersiniz?</div>';
-  if (cand) {
-    cand.candidates.forEach((c, idx) => { html += radioRow('nokta' + idx, 'Nokta ' + (idx + 1)); });
   } else {
-    html += '<div style="font-size:12.5px; color:var(--muted); margin-bottom:10px;">Bu müdahale için noktalar henüz yüklenmedi.</div>';
+    html += faz2OyOzeti(code);
+    html += '<div style="color:#2ecc71; font-size:12.5px; text-align:center; padding:12px 0; font-weight:600;">✓ Bu müdahale tamamlandı.</div>';
+    el.innerHTML = html;
   }
-  html += radioRow('NA', 'NA · Değerlendiremiyorum / uygulanabilir değil');
-
-  html += '<div class="section-label" style="padding-left:0; margin-top:12px;">2. Bu yanıtınızın temel nedeni nedir? Kısaca açıklayınız:</div>';
-  html += '<textarea id="faz2Reason" class="faz1Input" rows="3" style="width:100%; resize:vertical;">' + escapeFaz2(faz2Draft.reason) + '</textarea>';
-  html += '<div style="font-size:11px; color:var(--muted); margin-top:4px;">Soruları yanıtlamadan da sonraki müdahaleye geçebilirsiniz.</div>';
-  html += '<button id="faz2SaveBtn" class="faz1Btn primary" style="margin-top:14px; width:100%;">Oyu kaydet ve sonraki müdahaleye geç</button>';
-  el.innerHTML = html;
-
-  document.getElementById('faz2Reason').addEventListener('input', (e) => { faz2Draft.reason = e.target.value; });
-  el.querySelectorAll('input[name="faz2choice"]').forEach(r => r.addEventListener('change', () => {
-    faz2Draft.choice = r.value;
-    drawFaz2Layer();
-  }));
-  document.getElementById('faz2SaveBtn').addEventListener('click', saveFaz2Option);
   drawFaz2Layer();
 }
 
@@ -3695,6 +3842,18 @@ function drawFaz2Layer() {
     }).addTo(faz2HighlightLayer);
     L.marker(ll, { interactive: false, icon: L.divIcon({ className: '', html: '<div style="font-weight:800; font-size:15px; color:' + (isChosen ? '#2ecc71' : '#a855f7') + '; text-shadow:0 0 3px #000;">' + (idx + 1) + '</div>', iconSize: [16, 16], iconAnchor: [8, 8] }) }).addTo(faz2HighlightLayer);
   });
+  // Katılımcının kendi Faz 1 noktası YALNIZ Adım 3'te (oy ve anlam kilitlendikten sonra) gösterilir.
+  if (faz2Draft.stage === 'yansima') {
+    const ex = faz2Answers[code] || {};
+    if (ex.p1Lat !== undefined && ex.p1Lat !== '') {
+      const own = [Number(ex.p1Lat), Number(ex.p1Lon)];
+      pts.push(own);
+      L.circleMarker(own, { radius: 9, color: '#ff8c1a', weight: 3, fillColor: '#ff8c1a', fillOpacity: 0.85, interactive: false }).addTo(faz2HighlightLayer);
+      if (chosenIdx !== null && cand && cand.candidates[chosenIdx]) {
+        L.polyline([own, faz2PointLatLon(cand.candidates[chosenIdx])], { color: '#ff8c1a', weight: 2, dashArray: '5 6', interactive: false }).addTo(faz2HighlightLayer);
+      }
+    }
+  }
   if (!map.hasLayer(faz2HighlightLayer)) faz2HighlightLayer.addTo(map);
   if (pts.length) map.fitBounds(pts, { padding: [80, 80], maxZoom: 17 });
 }
@@ -3702,11 +3861,26 @@ function clearFaz2Highlight() {
   faz2HighlightLayer.clearLayers();
 }
 
-function saveFaz2Option() {
+function faz2Gonder(code, record) {
+  const payload = Object.assign({ participantCode: activeParticipantCode, optionCode: code }, record);
+  postToSheets('faz2', payload);
+  postPilotToSheets('faz2', payload);
+}
+
+// Adım 1: oy kilitlenir; mekânsal eksen burada hesaplanır (katılımcıya gösterilmez).
+function faz2OyuKilitle() {
   const code = faz2Draft.optionCode;
   const cand = faz2Candidates[code];
   const c = cand ? cand.candidates : [];
-  const record = { responseType: 'yanitsiz', chosenPoint: '', lat: '', lon: '', reason: (faz2Draft.reason || '').trim() };
+  const now = new Date().toISOString();
+  const onceki = faz2Answers[code] || {};
+  const record = {
+    sema: 'faz2-v2',
+    asama: 'oy_kilitlendi',
+    responseType: 'yanitsiz', chosenPoint: '', lat: '', lon: '', reason: '',
+    voteLockedAt: now,
+    surum: (onceki.surum || 0) + 1
+  };
   if (faz2Draft.choice && faz2Draft.choice.indexOf('nokta') === 0) {
     const idx = parseInt(faz2Draft.choice.slice(5), 10);
     const ll = faz2PointLatLon(c[idx]) || ['', ''];
@@ -3714,25 +3888,123 @@ function saveFaz2Option() {
   } else if (faz2Draft.choice === 'NA') {
     record.responseType = 'NA';
   }
+  // Mekânsal eksen: kendi Faz 1 noktasına en yakın aday ve mesafeler.
+  const own = faz2KendiFaz1(code);
+  if (own) {
+    Object.assign(record, { p1Lat: own.lat, p1Lon: own.lon, p1Tags: own.tags, p1Text: own.text });
+    const d = c.map(x => faz2Mesafe([own.lat, own.lon], faz2PointLatLon(x)));
+    const gecerli = d.filter(x => x !== null);
+    if (gecerli.length) {
+      const min = Math.min.apply(null, gecerli);
+      const enYakin = d.indexOf(min) + 1;
+      record.enYakinAday = enYakin;
+      record.enYakinMesafe_m = min;
+      if (record.responseType === 'nokta') {
+        record.secilenMesafe_m = d[record.chosenPoint - 1];
+        record.enYakinaOy = record.chosenPoint === enYakin ? 'EVET' : 'HAYIR';
+      }
+    }
+  } else {
+    record.p1Yok = true;
+  }
+  if (record.responseType === 'yanitsiz') { record.asama = 'tamamlandi'; record.completedAt = now; }
   faz2Answers[code] = record;
   saveFaz2Answers(activeParticipantCode, faz2Answers);
-
-  const faz2SheetPayload = Object.assign({ participantCode: activeParticipantCode, optionCode: code }, record);
-  postToSheets('faz2', faz2SheetPayload);
-  postPilotToSheets('faz2', faz2SheetPayload);
-
+  faz2Gonder(code, record);
+  faz2Draft.stage = record.asama === 'tamamlandi' ? 'bitti' : 'anlam';
   renderFaz2OptionList();
   renderFaz2Progress();
-
-  const remaining = DATA.optionCatalog.find(o => !faz2Answers[o.code]);
-  if (remaining) {
-    selectFaz2Option(remaining.code);
-  } else {
-    faz2Draft = { optionCode: null, choice: null, reason: '' };
-    clearFaz2Highlight();
-    document.getElementById('faz2Detail').innerHTML = '<div style="color:#2ecc71; font-size:13px; text-align:center; padding:24px 0; font-weight:600;">✓ 16 müdahalenin tümü için oyunuz kaydedildi. Teşekkür ederiz.</div>';
-  }
+  if (faz2Draft.stage === 'bitti') faz2Sonraki(); else renderFaz2Detail();
 }
+
+// Adım 2: Faz 1 ile aynı araçla anlam.
+function faz2AnlamiKaydet() {
+  const code = faz2Draft.optionCode;
+  const rec = faz2Answers[code];
+  if (!rec) return;
+  const na = rec.responseType === 'NA';
+  if (!na) {
+    const t = faz1TagsFromString(faz2Draft.tags);
+    if (t.indexOf(OTHER_PRIORITY_TAG) !== -1 && !(faz2Draft.meaningText || '').trim()) {
+      alert('"' + OTHER_PRIORITY_TAG + '" etiketini seçtiniz; lütfen kısaca açıklama yazın, ya da etiketi kaldırın.');
+      return;
+    }
+  }
+  const now = new Date().toISOString();
+  Object.assign(rec, {
+    meaningTags: na ? '' : (faz2Draft.tags || ''),
+    meaningText: na ? '' : (faz2Draft.meaningText || '').trim(),
+    reason: (faz2Draft.reason || '').trim(),
+    meaningSavedAt: now,
+    asama: 'anlam_kaydedildi'
+  });
+  if (!na && rec.p1Tags !== undefined) rec.anlamOrtusme = faz2Ortusme(rec.p1Tags, rec.meaningTags);
+  // NA ya da kendi Faz 1 noktası yoksa yansıma adımı atlanır.
+  if (na || rec.p1Yok) { rec.asama = 'tamamlandi'; rec.completedAt = now; }
+  faz2Answers[code] = rec;
+  saveFaz2Answers(activeParticipantCode, faz2Answers);
+  faz2Gonder(code, rec);
+  renderFaz2OptionList();
+  renderFaz2Progress();
+  if (rec.asama === 'tamamlandi') { faz2Draft.stage = 'bitti'; faz2Sonraki(); }
+  else { faz2Draft.stage = 'yansima'; renderFaz2Detail(); }
+}
+
+// Adım 3: yansıma ayrı alan olarak eklenir; oy ve anlam değişmez.
+function faz2YansimayiKaydet() {
+  const code = faz2Draft.optionCode;
+  const rec = faz2Answers[code];
+  if (!rec) return;
+  const now = new Date().toISOString();
+  Object.assign(rec, {
+    reflection: faz2Draft.reflection || '',
+    reflectionText: (faz2Draft.reflectionText || '').trim(),
+    reflectedAt: now,
+    asama: 'tamamlandi',
+    completedAt: now
+  });
+  faz2Answers[code] = rec;
+  saveFaz2Answers(activeParticipantCode, faz2Answers);
+  faz2Gonder(code, rec);
+  renderFaz2OptionList();
+  renderFaz2Progress();
+  faz2Sonraki();
+}
+
+function faz2Sonraki() {
+  const remaining = DATA.optionCatalog.find(o => !faz2Tamam(faz2Answers[o.code]));
+  if (remaining) { selectFaz2Option(remaining.code); return; }
+  faz2Draft = faz2BosTaslak(FAZ2_KAPANIS_KODU);
+  clearFaz2Highlight();
+  renderFaz2Kapanis();
+}
+
+// Oturum sonu: seçilmeyen adaylardan korunması/eklenmesi istenen öğeler (muhalefet kaydı).
+function renderFaz2Kapanis() {
+  const el = document.getElementById('faz2Detail');
+  const ex = faz2Answers[FAZ2_KAPANIS_KODU];
+  if (ex && ex.asama === 'tamamlandi') {
+    el.innerHTML = '<div style="color:#2ecc71; font-size:13px; text-align:center; padding:24px 0; font-weight:600;">✓ 16 müdahalenin tümü için yanıtlarınız kaydedildi. Teşekkür ederiz.</div>';
+    return;
+  }
+  el.innerHTML =
+    '<div style="color:#2ecc71; font-size:12.5px; font-weight:600; margin-bottom:12px;">✓ 16 müdahale tamamlandı. Son bir soru:</div>' +
+    '<div class="section-label" style="padding-left:0;">Seçmediğiniz noktalardan korunmasını ya da eklenmesini istediğiniz bir öğe veya anlam var mı? <span style="font-weight:400; color:var(--muted); text-transform:none; letter-spacing:0;">(isteğe bağlı; müdahale kodunu da yazabilirsiniz)</span></div>' +
+    '<textarea id="faz2KapanisText" class="faz1Input" rows="4" style="width:100%; resize:vertical;"></textarea>' +
+    '<button id="faz2KapanisBtn" class="faz1Btn primary" style="margin-top:14px; width:100%;">Kaydet ve oturumu bitir</button>';
+  document.getElementById('faz2KapanisBtn').addEventListener('click', () => {
+    const now = new Date().toISOString();
+    const rec = { sema: 'faz2-v2', asama: 'tamamlandi', responseType: 'kapanis', chosenPoint: '', lat: '', lon: '',
+      reason: (document.getElementById('faz2KapanisText').value || '').trim(), completedAt: now };
+    faz2Answers[FAZ2_KAPANIS_KODU] = rec;
+    saveFaz2Answers(activeParticipantCode, faz2Answers);
+    faz2Gonder(FAZ2_KAPANIS_KODU, rec);
+    renderFaz2Kapanis();
+  });
+}
+
+// Geriye dönük uyumluluk: eski çağrılar için.
+function saveFaz2Option() { faz2OyuKilitle(); }
 
 
 // ============================================================================
