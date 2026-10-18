@@ -2047,14 +2047,16 @@ function exportSurveyCSVNow() {
   alert('Anket tablosu indirildi (.csv — doğrudan Excel ile açılır). İndirilenler klasörünüzü kontrol edin.');
 }
 
-// ---- KOLAYLAŞTIRICI PANELİ GİZLEME (18 Eki 2026, Merve Kaya kararı) ----
-// Sağ üstteki Pilot Kayıt / CSV-JSON indirme / "Bu Oturumun Kayıtlarını Sil"
-// düğmeleri artık varsayılan olarak hiç gösterilmez; yalnızca aşağıdaki gizli
-// anahtar adres çubuğunda ?kp=... olarak verildiğinde görünür. Amaç: siteyi
-// normal ziyaret edip keşfeden biri bu düğmelere hiç rastlamasın, hiçbir şey
-// açamasın/indiremesin/silemesin. NOT: dosya GitHub'da herkese açık olduğu
-// için bu "gerçek" bir parola değildir, yalnızca kazara keşfedilmeyi engeller.
-// Kendi tarayıcında bu paneli görmek için siteyi şu şekilde aç:
+// ---- KOLAYLAŞTIRICI PANELİ EYLEM DÜĞMELERİNİ GİZLEME (18 Eki 2026, Merve ----
+// Kaya kararı, aynı gün güncellendi): DENEME MODU / Gerçek Kayıt: Kilitli /
+// Pilot Kayıt açık-kapalı ROZETLERİ şeffaflık için herkese görünür kalır —
+// ziyaretçi hiçbir şeyin kaydedilmediğini görebilsin. Ama Pilot Kayıt aç/kapat,
+// Faz1/Faz2/Anket indir, Tüm Veriyi Yedekle ve Bu Oturumun Kayıtlarını Sil
+// EYLEM düğmeleri artık varsayılan olarak hiç render edilmez; yalnızca
+// aşağıdaki gizli anahtar adres çubuğunda ?kp=... olarak verildiğinde
+// görünür. NOT: dosya GitHub'da herkese açık olduğu için bu "gerçek" bir
+// parola değildir, yalnızca kazara keşfedilmeyi/kullanılmayı engeller.
+// Kendi tarayıcında bu düğmeleri görmek için siteyi şu şekilde aç:
 //   ?kp=85484e07a8d3e9aff118
 // (Faz 2'yi gerçek bir KK koduyla denemek için ayrıca &faz2=test eklenebilir.)
 const KOLAYLASTIRICI_ANAHTARI = '85484e07a8d3e9aff118';
@@ -2066,30 +2068,44 @@ function kolaylasticiPaneliAcikMi() {
 function renderRecordingModePanel() {
   const el = document.getElementById('recordingModePanel');
   if (!el) return;
-  if (!kolaylasticiPaneliAcikMi()) { el.style.display = 'none'; el.innerHTML = ''; return; }
   el.style.display = 'flex';
   const mode = getRecordingMode();
   const isReal = mode === 'real';
   const pilotOn = getPilotRecording();
-  el.innerHTML = `
+  // 18 Eki 2026 (Merve Kaya kararı, güncellendi): durum rozetleri (DENEME
+  // MODU / Gerçek Kayıt: Kilitli / Pilot Kayıt açık-kapalı) HERKESE görünür
+  // kalır — şeffaflık için, ziyaretçi hiçbir şeyin kaydedilmediğini görsün.
+  // Yalnızca EYLEM düğmeleri (Pilot Kayıt aç/kapat, indirme, tüm veriyi
+  // yedekle, kayıtları sil) gizli ?kp= anahtarı olmadan hiç render edilmez.
+  const yetkili = kolaylasticiPaneliAcikMi();
+  let html = `
     <div class="rmDragHandle" title="Tutup sürükleyin, paneli istediğiniz yere taşıyın">⠿⠿⠿ taşı</div>
     <div class="rmStatus ${isReal ? 'rmReal' : 'rmPractice'}">${isReal ? '● GERÇEK KAYIT' : '● DENEME MODU'}</div>
-    <button id="rmToggleBtn" class="rmBtn"${REAL_MODE_LOCKED ? ' disabled title="Gerçek kayıt veri toplama gününe kadar kilitlidir"' : ''}>${REAL_MODE_LOCKED ? 'Gerçek Kayıt: Kilitli' : (isReal ? 'Deneme Moduna Dön' : 'Gerçek Kayıt Moduna Geç')}</button>
-    <div class="rmStatus ${pilotOn ? 'rmReal' : 'rmPractice'}" style="margin-top:8px;">${pilotOn ? '● PİLOT KAYIT AÇIK' : '○ Pilot Kayıt kapalı'}</div>
+    <button id="rmToggleBtn" class="rmBtn"${(REAL_MODE_LOCKED || !yetkili) ? ' disabled' : ''}${REAL_MODE_LOCKED ? ' title="Gerçek kayıt veri toplama gününe kadar kilitlidir"' : ''}>${REAL_MODE_LOCKED ? 'Gerçek Kayıt: Kilitli' : (isReal ? 'Deneme Moduna Dön' : 'Gerçek Kayıt Moduna Geç')}</button>
+    <div class="rmStatus ${pilotOn ? 'rmReal' : 'rmPractice'}" style="margin-top:8px;">${pilotOn ? '● PİLOT KAYIT AÇIK' : '○ Pilot Kayıt kapalı'}</div>`;
+  if (yetkili) {
+    html += `
     <button id="rmPilotToggleBtn" class="rmBtn" title="Kurumsal olmayan gerçek kişilerle deneme yaparken Faz 1/Faz 2 kayıtlarını, resmi veriden ayrı ve 'pilot' etiketiyle Google E-Tablo'ya da gönderir.">${pilotOn ? 'Pilot Kaydı Kapat' : 'Pilot Kaydı Aç'}</button>
     <button id="rmExportCsvBtn" class="rmBtn" style="margin-top:8px; background:#1a7a4a; color:#fff; border-color:#1a7a4a;" title="Bu tarayıcıda kayıtlı TÜM katılımcıların Faz 1 (harita yerleştirme) verisini, internete/Google E-Tablo'ya hiç bağlı olmadan, bilgisayarınıza Excel'de açılan bir CSV olarak indirir.">⬇ Faz 1 Tablosunu İndir (.csv)</button>
     <button id="rmExportFaz2Btn" class="rmBtn" style="margin-top:6px; background:#1a7a4a; color:#fff; border-color:#1a7a4a;" title="Bu tarayıcıda kayıtlı TÜM katılımcıların Faz 2 (grup oylaması) verisini, internete/Google E-Tablo'ya hiç bağlı olmadan, bilgisayarınıza Excel'de açılan bir CSV olarak indirir.">⬇ Faz 2 Tablosunu İndir (.csv)</button>
     <button id="rmExportSurveyBtn" class="rmBtn" style="margin-top:6px; background:#1a7a4a; color:#fff; border-color:#1a7a4a;" title="Bu tarayıcıda kayıtlı TÜM katılımcıların anket (açık uçlu sorular + ilk üç öncelik) verisini, internete/Google E-Tablo'ya hiç bağlı olmadan, bilgisayarınıza Excel'de açılan bir CSV olarak indirir.">⬇ Anket Tablosunu İndir (.csv)</button>
     <button id="rmExportJsonBtn" class="rmBtn" style="margin-top:6px;" title="Faz 1 + Faz 2 + Anket dahil TÜM veriyi tam yedek olarak (.json) indirir.">⬇ Tüm Veriyi Yedekle (.json)</button>
-    <button id="rmClearBtn" class="rmBtn rmClearBtn">Bu Oturumun Kayıtlarını Sil</button>
-  `;
-  document.getElementById('rmExportCsvBtn').onclick = exportFaz1CSVNow;
-  document.getElementById('rmExportFaz2Btn').onclick = exportFaz2CSVNow;
-  document.getElementById('rmExportSurveyBtn').onclick = exportSurveyCSVNow;
-  document.getElementById('rmExportJsonBtn').onclick = exportAllJSONNow;
-  document.getElementById('rmPilotToggleBtn').onclick = () => setPilotRecording(!pilotOn);
+    <button id="rmClearBtn" class="rmBtn rmClearBtn">Bu Oturumun Kayıtlarını Sil</button>`;
+  }
+  el.innerHTML = html;
+  if (yetkili) {
+    document.getElementById('rmExportCsvBtn').onclick = exportFaz1CSVNow;
+    document.getElementById('rmExportFaz2Btn').onclick = exportFaz2CSVNow;
+    document.getElementById('rmExportSurveyBtn').onclick = exportSurveyCSVNow;
+    document.getElementById('rmExportJsonBtn').onclick = exportAllJSONNow;
+    document.getElementById('rmPilotToggleBtn').onclick = () => setPilotRecording(!pilotOn);
+    document.getElementById('rmClearBtn').onclick = () => {
+      const ok = confirm('Yalnızca Faz 1 (opsiyon yerleştirme) ve anket kayıtları silinecek; Faz 2 ve eklenen fotoğraf/videolar bu işlemden etkilenmeyecek. Sayfa yeniden yüklenecek. Emin misiniz?');
+      if (ok) clearAllRecords();
+    };
+  }
   document.getElementById('rmToggleBtn').onclick = () => {
-    if (REAL_MODE_LOCKED) return;
+    if (REAL_MODE_LOCKED || !yetkili) return;
     if (isReal) {
       setRecordingMode('practice');
     } else {
@@ -2097,10 +2113,6 @@ function renderRecordingModePanel() {
       const ok = confirm("Gerçek Kayıt Moduna geçmek üzeresiniz. Bu andan itibaren yapılan tüm Faz 1/Faz 2/anket kayıtları Google E-Tablo'ya kalıcı olarak gönderilecek. Devam edilsin mi?");
       if (ok) setRecordingMode('real');
     }
-  };
-  document.getElementById('rmClearBtn').onclick = () => {
-    const ok = confirm('Yalnızca Faz 1 (opsiyon yerleştirme) ve anket kayıtları silinecek; Faz 2 ve eklenen fotoğraf/videolar bu işlemden etkilenmeyecek. Sayfa yeniden yüklenecek. Emin misiniz?');
-    if (ok) clearAllRecords();
   };
 }
 //
@@ -2166,7 +2178,6 @@ const RM_PANEL_POS_KEY = 'bikemap_recordingPanel_pos_v1';
 function setupRecordingModePanelDrag() {
   const el = document.getElementById('recordingModePanel');
   if (!el) return;
-  if (!kolaylasticiPaneliAcikMi()) return;
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(RM_PANEL_POS_KEY) || 'null'); } catch (e) { saved = null; }
   const applyPos = (left, top) => {
@@ -3872,6 +3883,24 @@ function escapeFaz2(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// Harita üzerindeki aday noktaya doğrudan tıklayarak oy verme (18 Eki 2026,
+// Merve Kaya isteği): yan paneldeki radyo düğmelerine alternatif, daha hızlı
+// bir yol. Yalnızca Adım 1 (Oy) sırasında aktiftir; NA seçeneği bu yoldan
+// verilemez (yan panelden seçilmeli). Onaylanırsa faz2OyuKilitle() ile AYNI
+// kilitleme mantığını çalıştırır; reddedilirse hiçbir şey değişmez.
+function faz2NoktayaTikla(idx) {
+  if (faz2Draft.stage !== 'oy') return;
+  const ok = confirm('Nokta ' + (idx + 1) + '\'i bu müdahale için seçmek istiyorsunuz. Onaylarsanız oyunuz hemen kaydedilip kilitlenecek ve değiştirilemeyecek. Kaydedeyim mi?');
+  if (!ok) return;
+  faz2Draft.choice = 'nokta' + idx;
+  const r = document.querySelector('input[name="faz2choice"][value="nokta' + idx + '"]');
+  if (r) r.checked = true;
+  const btn = document.getElementById('faz2OyBtn');
+  if (btn) btn.textContent = 'Oyumu kaydet ve kilitle';
+  faz2OyuKilitle();
+  alert('Kaydedildi. Bu müdahale için bir sonraki adıma geçebilirsiniz.');
+}
+
 function drawFaz2Layer() {
   faz2HighlightLayer.clearLayers();
   const code = faz2Draft.optionCode;
@@ -3881,16 +3910,29 @@ function drawFaz2Layer() {
     L.circleMarker(ll, { radius: 4, color: '#9aa0a6', weight: 1, fillColor: '#9aa0a6', fillOpacity: 0.6, interactive: false }).addTo(faz2HighlightLayer);
   });
   const pts = [];
+  // 18 Eki 2026 (Merve Kaya isteği): aday noktalar artık içi dolu neon sarı
+  // daireler + kalın siyah numara; yalnızca Adım 1 (Oy) sırasında tıklanabilir
+  // — üzerine tıklayınca ekranda onay sorulur, evet denirse oy hemen
+  // kaydedilip kilitlenir (faz2NoktayaTikla). Oy kilitlendikten sonra (Anlam/
+  // Yansıma adımlarında) aynı noktalar görünür ama artık tıklanamaz.
+  const faz2Tiklanabilir = faz2Draft.stage === 'oy';
   (cand ? cand.candidates : []).forEach((c, idx) => {
     const ll = faz2PointLatLon(c);
     if (!ll) return;
     pts.push(ll);
     const isChosen = idx === chosenIdx;
-    L.circleMarker(ll, {
-      radius: isChosen ? 22 : 18, color: isChosen ? '#2ecc71' : '#a855f7', weight: isChosen ? 4 : 2.5,
-      fill: false, interactive: false
+    const cm = L.circleMarker(ll, {
+      radius: isChosen ? 20 : 17,
+      color: isChosen ? '#2ecc71' : '#111111',
+      weight: isChosen ? 4 : 2,
+      fill: true, fillColor: '#ffe600', fillOpacity: 1,
+      interactive: faz2Tiklanabilir
     }).addTo(faz2HighlightLayer);
-    L.marker(ll, { interactive: false, icon: L.divIcon({ className: '', html: '<div style="font-weight:800; font-size:15px; color:' + (isChosen ? '#2ecc71' : '#a855f7') + '; text-shadow:0 0 3px #000;">' + (idx + 1) + '</div>', iconSize: [16, 16], iconAnchor: [8, 8] }) }).addTo(faz2HighlightLayer);
+    const lbl = L.marker(ll, { interactive: faz2Tiklanabilir, icon: L.divIcon({ className: '', html: '<div style="font-weight:800; font-size:16px; color:#000;">' + (idx + 1) + '</div>', iconSize: [20, 20], iconAnchor: [10, 10] }) }).addTo(faz2HighlightLayer);
+    if (faz2Tiklanabilir) {
+      cm.on('click', () => faz2NoktayaTikla(idx));
+      lbl.on('click', () => faz2NoktayaTikla(idx));
+    }
   });
   // Katılımcının kendi Faz 1 noktası YALNIZ Adım 3'te (oy ve anlam kilitlendikten sonra) gösterilir.
   if (faz2Draft.stage === 'yansima') {
