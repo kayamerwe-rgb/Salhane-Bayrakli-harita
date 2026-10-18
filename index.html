@@ -72,8 +72,27 @@
   #faz1WizardNav .faz1Btn { flex:1; }
   #faz1WizardBackBtn, #faz1WizardCloseBtn { flex:0 0 auto; width:auto; padding:9px 14px; }
   #faz2WizardOverlay { display:none; position:fixed; inset:0; z-index:3200; background:rgba(5,8,10,0.72); align-items:center; justify-content:center; padding:24px; }
-  #faz2WizardCard { width:min(480px, 100%); max-height:min(640px, 92vh); background:var(--panel); border:1px solid var(--border); border-radius:14px; box-shadow:0 12px 40px rgba(0,0,0,.55); display:flex; flex-direction:column; overflow:hidden; }
-  #faz2WizardBody { flex:1; overflow-y:auto; padding:18px 20px; }
+  #faz2WizardCard { width:min(620px, 95vw); max-height:min(720px, 92vh); background:var(--panel); border:1px solid var(--border); border-radius:14px; box-shadow:0 12px 40px rgba(0,0,0,.55); display:flex; flex-direction:column; overflow:hidden; }
+  #faz2WizardBody { flex:1; overflow-y:auto; padding:24px 28px; font-size:16px; line-height:1.6; }
+  /* 18 Eki 2026 (Merve Kaya isteği): merkez modaldaki yazılar okunaklı olsun
+     diye büyütüldü; satır içi (inline) küçük font-size'ları ezmek için
+     !important kullanılıyor. Yalnızca #faz2WizardBody içini etkiler; yan
+     panel (#faz2Detail) ve diğer ekranlar eskisi gibi kalır. */
+  #faz2WizardBody div, #faz2WizardBody span, #faz2WizardBody p { font-size:16px !important; }
+  #faz2WizardBody h3 { font-size:20px !important; }
+  #faz2WizardBody .badge { font-size:18px !important; }
+  #faz2WizardBody .section-label { font-size:14.5px !important; }
+  #faz2WizardBody label { font-size:16.5px !important; }
+  #faz2WizardBody .faz1Input, #faz2WizardBody .faz1Textarea { font-size:17px !important; padding:12px 13px !important; }
+  #faz2WizardBody .faz1Btn { font-size:17px !important; padding:14px 15px !important; }
+  #faz2WizardBody .faz1Tag { font-size:15px !important; padding:9px 15px !important; }
+  #faz2WizardBody .faz2Big { font-size:21px !important; }
+  #faz2WizardBody .faz2Med { font-size:17px !important; }
+  #faz2ConfirmOverlay { display:none; position:fixed; inset:0; z-index:3300; background:rgba(5,8,10,0.78); align-items:center; justify-content:center; padding:24px; }
+  #faz2ConfirmCard { width:min(440px, 92vw); background:var(--panel); border:1px solid var(--border); border-radius:14px; box-shadow:0 12px 40px rgba(0,0,0,.6); padding:28px 26px; text-align:center; }
+  #faz2ConfirmMsg { font-size:17px; line-height:1.6; margin-bottom:22px; color:var(--text); }
+  #faz2ConfirmBtns { display:flex; gap:10px; }
+  #faz2ConfirmBtns .faz1Btn { font-size:15.5px; padding:12px 14px; }
   .faz1WizQ { font-size:14.5px; font-weight:600; line-height:1.45; margin-bottom:14px; }
   .faz1WizDim { font-size:11px; color:var(--accent2); text-transform:uppercase; letter-spacing:.06em; margin-bottom:5px; font-weight:700; }
   /* Bir soru cevaplanınca kart önce kapanır (küçülüp solar), kısa bir süre
@@ -338,6 +357,13 @@
 <div id="faz2WizardOverlay">
   <div id="faz2WizardCard">
     <div id="faz2WizardBody"></div>
+  </div>
+</div>
+
+<div id="faz2ConfirmOverlay">
+  <div id="faz2ConfirmCard">
+    <div id="faz2ConfirmMsg"></div>
+    <div id="faz2ConfirmBtns"></div>
   </div>
 </div>
 
@@ -3844,8 +3870,39 @@ function faz2ModalKapat() {
   const ovl = document.getElementById('faz2WizardOverlay');
   if (ovl) ovl.style.display = 'none';
 }
+// 18 Eki 2026 (Merve Kaya isteği): "Kaydedeyim mi?" sorusu artık tarayıcının
+// konumlandıramadığımız native confirm()'ü yerine, ekranın TAM ortasında,
+// uygulamanın kendi koyu temalı penceresinde gösteriliyor.
+function faz2OzelOnay(mesaj) {
+  return new Promise(resolve => {
+    const ovl = document.getElementById('faz2ConfirmOverlay');
+    document.getElementById('faz2ConfirmMsg').textContent = mesaj;
+    const btns = document.getElementById('faz2ConfirmBtns');
+    btns.innerHTML = '<button type="button" id="faz2ConfirmYes" class="faz1Btn primary" style="flex:1;">Evet, kaydet</button><button type="button" id="faz2ConfirmNo" class="faz1Btn" style="flex:1;">Vazgeç</button>';
+    ovl.style.display = 'flex';
+    const bitir = val => { ovl.style.display = 'none'; resolve(val); };
+    document.getElementById('faz2ConfirmYes').onclick = () => bitir(true);
+    document.getElementById('faz2ConfirmNo').onclick = () => bitir(false);
+  });
+}
+function faz2OzelBilgi(mesaj) {
+  return new Promise(resolve => {
+    const ovl = document.getElementById('faz2ConfirmOverlay');
+    document.getElementById('faz2ConfirmMsg').textContent = mesaj;
+    const btns = document.getElementById('faz2ConfirmBtns');
+    btns.innerHTML = '<button type="button" id="faz2ConfirmOk" class="faz1Btn primary" style="flex:1;">Tamam</button>';
+    ovl.style.display = 'flex';
+    document.getElementById('faz2ConfirmOk').onclick = () => { ovl.style.display = 'none'; resolve(true); };
+  });
+}
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape' && e.key !== 'Esc') return;
+  const confirmOvl = document.getElementById('faz2ConfirmOverlay');
+  if (confirmOvl && confirmOvl.style.display === 'flex') {
+    const noBtn = document.getElementById('faz2ConfirmNo') || document.getElementById('faz2ConfirmOk');
+    if (noBtn) noBtn.click(); else confirmOvl.style.display = 'none';
+    return;
+  }
   const ovl = document.getElementById('faz2WizardOverlay');
   if (ovl && ovl.style.display === 'flex') faz2ModalKapat();
 });
@@ -3952,9 +4009,9 @@ function escapeFaz2(s) {
 // bir yol. Yalnızca Adım 1 (Oy) sırasında aktiftir; NA seçeneği bu yoldan
 // verilemez (yan panelden seçilmeli). Onaylanırsa faz2OyuKilitle() ile AYNI
 // kilitleme mantığını çalıştırır; reddedilirse hiçbir şey değişmez.
-function faz2NoktayaTikla(idx) {
+async function faz2NoktayaTikla(idx) {
   if (faz2Draft.stage !== 'oy') return;
-  const ok = confirm('Nokta ' + (idx + 1) + '\'i bu müdahale için seçmek istiyorsunuz. Onaylarsanız oyunuz hemen kaydedilip kilitlenecek ve değiştirilemeyecek. Kaydedeyim mi?');
+  const ok = await faz2OzelOnay('Nokta ' + (idx + 1) + '\'i bu müdahale için seçmek istiyorsunuz. Onaylarsanız oyunuz hemen kaydedilip kilitlenecek ve değiştirilemeyecek. Kaydedeyim mi?');
   if (!ok) return;
   faz2Draft.choice = 'nokta' + idx;
   const r = document.querySelector('input[name="faz2choice"][value="nokta' + idx + '"]');
@@ -3962,7 +4019,7 @@ function faz2NoktayaTikla(idx) {
   const btn = document.getElementById('faz2OyBtn');
   if (btn) btn.textContent = 'Oyumu kaydet ve kilitle';
   faz2OyuKilitle();
-  alert('Kaydedildi. Bu müdahale için bir sonraki adıma geçebilirsiniz.');
+  await faz2OzelBilgi('Kaydedildi. Bu müdahale için bir sonraki adıma geçebilirsiniz.');
 }
 
 function drawFaz2Layer() {
@@ -4143,8 +4200,13 @@ function renderFaz2Kapanis() {
   const modalBody = document.getElementById('faz2WizardBody');
   const ex = faz2Answers[FAZ2_KAPANIS_KODU];
   if (ex && ex.asama === 'tamamlandi') {
-    overlay.style.display = 'none';
-    el.innerHTML = '<div style="color:#2ecc71; font-size:13px; text-align:center; padding:24px 0; font-weight:600;">✓ 16 müdahalenin tümü için yanıtlarınız kaydedildi. Teşekkür ederiz.</div>';
+    modalBody.innerHTML = '<div style="text-align:center; padding:6px 0;">' +
+      '<div class="faz2Big" style="color:#2ecc71; font-weight:700; margin-bottom:10px;">✓ Faz 2 bitmiştir.</div>' +
+      '<div class="faz2Med">16 müdahalenin tümü için yanıtlarınız kaydedildi. Teşekkür ederiz.</div>' +
+      '<button type="button" id="faz2BitisKapatBtn" class="faz1Btn primary" style="margin-top:20px; width:100%;">Kapat</button></div>';
+    overlay.style.display = 'flex';
+    el.innerHTML = '<div style="color:#2ecc71; font-size:12.5px; text-align:center; padding:24px 0; font-weight:600;">✓ Faz 2 bitmiştir. Teşekkür ederiz.</div>';
+    document.getElementById('faz2BitisKapatBtn').addEventListener('click', faz2ModalKapat);
     return;
   }
   modalBody.innerHTML =
