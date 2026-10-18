@@ -2047,9 +2047,27 @@ function exportSurveyCSVNow() {
   alert('Anket tablosu indirildi (.csv — doğrudan Excel ile açılır). İndirilenler klasörünüzü kontrol edin.');
 }
 
+// ---- KOLAYLAŞTIRICI PANELİ GİZLEME (18 Eki 2026, Merve Kaya kararı) ----
+// Sağ üstteki Pilot Kayıt / CSV-JSON indirme / "Bu Oturumun Kayıtlarını Sil"
+// düğmeleri artık varsayılan olarak hiç gösterilmez; yalnızca aşağıdaki gizli
+// anahtar adres çubuğunda ?kp=... olarak verildiğinde görünür. Amaç: siteyi
+// normal ziyaret edip keşfeden biri bu düğmelere hiç rastlamasın, hiçbir şey
+// açamasın/indiremesin/silemesin. NOT: dosya GitHub'da herkese açık olduğu
+// için bu "gerçek" bir parola değildir, yalnızca kazara keşfedilmeyi engeller.
+// Kendi tarayıcında bu paneli görmek için siteyi şu şekilde aç:
+//   ?kp=85484e07a8d3e9aff118
+// (Faz 2'yi gerçek bir KK koduyla denemek için ayrıca &faz2=test eklenebilir.)
+const KOLAYLASTIRICI_ANAHTARI = '85484e07a8d3e9aff118';
+function kolaylasticiPaneliAcikMi() {
+  try { return new URLSearchParams(location.search).get('kp') === KOLAYLASTIRICI_ANAHTARI; }
+  catch (e) { return false; }
+}
+
 function renderRecordingModePanel() {
   const el = document.getElementById('recordingModePanel');
   if (!el) return;
+  if (!kolaylasticiPaneliAcikMi()) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = 'flex';
   const mode = getRecordingMode();
   const isReal = mode === 'real';
   const pilotOn = getPilotRecording();
@@ -2148,6 +2166,7 @@ const RM_PANEL_POS_KEY = 'bikemap_recordingPanel_pos_v1';
 function setupRecordingModePanelDrag() {
   const el = document.getElementById('recordingModePanel');
   if (!el) return;
+  if (!kolaylasticiPaneliAcikMi()) return;
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(RM_PANEL_POS_KEY) || 'null'); } catch (e) { saved = null; }
   const applyPos = (left, top) => {
@@ -3642,7 +3661,31 @@ function renderFaz2OptionList() {
 
 // Faz 1 sonrası doldurulacak. Örnek:
 // 'A': [ { lat: 38.4561, lon: 27.1702 }, { lat: 38.4549, lon: 27.1688 }, { lat: 38.4572, lon: 27.1719 } ],
+// GEÇİCİ TEST VERİSİ (18 Eki 2026, Merve Kaya isteği): 3 kişilik deneme
+// gerçek veriyi hiç Google E-Tablo'ya ulaştıramadığı için ("Noktaları getir"
+// 0 dönüyordu), 16 müdahalenin HER BİRİ için üç sabit güzergah noktası
+// (SB1/SB2/SB3'ten birer tane) burada manuel giriliyor. Bu GERÇEK bir
+// katılımcı kararı DEĞİLDİR — yalnızca Faz 2 arayüzünün TEST modunda uçtan
+// uca denenebilmesi içindir. Gerçek Faz 1 verisi sunucuya ulaştığında bu
+// sabit liste boşaltılmalıdır (aksi halde gerçek veri varken bile öncelikli
+// kalır; bkz. faz2ApplyResearcherPoints).
 const FAZ2_ONERILEN_NOKTALAR = {
+  'A': [{ lat: 38.4540778, lon: 27.1683649 }, { lat: 38.4614582, lon: 27.1685616 }, { lat: 38.4592, lon: 27.1716467 }],
+  'B': [{ lat: 38.4540778, lon: 27.1683649 }, { lat: 38.4614582, lon: 27.1685616 }, { lat: 38.4592, lon: 27.1716467 }],
+  'C': [{ lat: 38.4540778, lon: 27.1683649 }, { lat: 38.4614582, lon: 27.1685616 }, { lat: 38.4592, lon: 27.1716467 }],
+  'D': [{ lat: 38.4540778, lon: 27.1683649 }, { lat: 38.4614582, lon: 27.1685616 }, { lat: 38.4592, lon: 27.1716467 }],
+  'F': [{ lat: 38.4540778, lon: 27.1683649 }, { lat: 38.4614582, lon: 27.1685616 }, { lat: 38.4592, lon: 27.1716467 }],
+  'G': [{ lat: 38.4540778, lon: 27.1683649 }, { lat: 38.4614582, lon: 27.1685616 }, { lat: 38.4592, lon: 27.1716467 }],
+  'I': [{ lat: 38.4540778, lon: 27.1683649 }, { lat: 38.4614582, lon: 27.1685616 }, { lat: 38.4592, lon: 27.1716467 }],
+  'J': [{ lat: 38.4540778, lon: 27.1683649 }, { lat: 38.4614582, lon: 27.1685616 }, { lat: 38.4592, lon: 27.1716467 }],
+  'K': [{ lat: 38.4540778, lon: 27.1683649 }, { lat: 38.4614582, lon: 27.1685616 }, { lat: 38.4592, lon: 27.1716467 }],
+  'L': [{ lat: 38.4540778, lon: 27.1683649 }, { lat: 38.4614582, lon: 27.1685616 }, { lat: 38.4592, lon: 27.1716467 }],
+  'M': [{ lat: 38.4540778, lon: 27.1683649 }, { lat: 38.4614582, lon: 27.1685616 }, { lat: 38.4592, lon: 27.1716467 }],
+  'R': [{ lat: 38.4540778, lon: 27.1683649 }, { lat: 38.4614582, lon: 27.1685616 }, { lat: 38.4592, lon: 27.1716467 }],
+  'T': [{ lat: 38.4540778, lon: 27.1683649 }, { lat: 38.4614582, lon: 27.1685616 }, { lat: 38.4592, lon: 27.1716467 }],
+  'U': [{ lat: 38.4540778, lon: 27.1683649 }, { lat: 38.4614582, lon: 27.1685616 }, { lat: 38.4592, lon: 27.1716467 }],
+  'V': [{ lat: 38.4540778, lon: 27.1683649 }, { lat: 38.4614582, lon: 27.1685616 }, { lat: 38.4592, lon: 27.1716467 }],
+  'W': [{ lat: 38.4540778, lon: 27.1683649 }, { lat: 38.4614582, lon: 27.1685616 }, { lat: 38.4592, lon: 27.1716467 }]
 };
 // Faz 1 sonrası doldurulacak: her müdahale için Faz 1 yerleştirmelerinin
 // koordinatları (kimliksiz). Örnek: 'A': [[38.4561, 27.1702], [38.4550, 27.1690]],
