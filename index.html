@@ -1919,26 +1919,41 @@ function setPilotRecording(on) {
 // fotoğraf/videolara (PHOTO_STORE_KEY/VIDEO_STORE_KEY, video blob'ları) ve
 // katman görünürlük/saydamlık tercihlerine (OVERLAY_STORE_KEY) kasıtlı
 // olarak dokunulmaz — bunlar bu düğmeyle asla silinmez.
-// 18 Eki 2026 (Merve Kaya isteği): TEST katılımcısı "asıl veriye karışmaz"
-// olduğu için önceki deneme kayıtlarını de hatırlamamalı. Bu fonksiyon
-// yalnızca code === 'TEST' için Faz1 + Faz1 taslağı + Anket + Faz2
-// kayıtlarını siler; başka hiçbir katılımcı kodu etkilenmez. Hem sayfa her
-// açıldığında hem de "Başla" ile TEST seçildiğinde çağrılır; tarayıcı
-// kapatılıp yeniden açıldığında da (yeni sayfa yüklemesi = yeni silme)
-// aynı sonucu verir.
-function temizleTestVerileri() {
+// 18 Eki 2026 (Merve Kaya kararı): Bu dağıtım halka DENEME/KEŞİF için
+// veriliyor — "kaydetsin diye değil, denesin oynasın keşfetsin diye".
+// Bu yüzden deneme modundayken (Gerçek Kayıt kilitliyken/kapalıyken) TÜM
+// katılımcı rosteri (KK1..KK15 + TEST) için önceki Faz1 + Faz1 taslağı +
+// Anket + Faz2 kayıtları ve "kaldığınız yerden devam edin" hatırlatıcısı
+// silinir — bir kişinin seçimleri bir sonraki kişiye hiç yansımaz. Hem
+// sayfa her açıldığında (tarayıcı kapanıp yeniden açılınca) hem de "Başla"
+// ile yeni biri başladığında çağrılır.
+//
+// GÜVENLİK: kişisel link (LINK_MODE) oturumlarına ve Gerçek Kayıt modu
+// açıkken ASLA dokunmaz — orada hiçbir şey silinmez, her şey olduğu gibi
+// kaydedilir/yedeklenir.
+function temizleDenemeVerilerini() {
   try {
-    const kod = 'TEST';
+    if (typeof LINK_MODE !== 'undefined' && LINK_MODE) return;
+    if (typeof getRecordingMode === 'function' && getRecordingMode() === 'real') return;
+    const kodlar = (typeof PARTICIPANT_ROSTER !== 'undefined' && PARTICIPANT_ROSTER.length)
+      ? PARTICIPANT_ROSTER.map(p => p.code) : ['TEST'];
+    const hedefler = new Set();
+    kodlar.forEach(kod => {
+      hedefler.add(FAZ1_STORE_PREFIX + kod);
+      hedefler.add(FAZ1_DRAFT_STORE_PREFIX + kod);
+      if (typeof FAZ2_STORE_PREFIX !== 'undefined') hedefler.add(FAZ2_STORE_PREFIX + kod);
+      if (typeof SURVEY_STORE_PREFIX !== 'undefined') {
+        hedefler.add(SURVEY_STORE_PREFIX + kod + '_pre');
+        hedefler.add(SURVEY_STORE_PREFIX + kod + '_post');
+      }
+    });
     const toRemove = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (!k) continue;
-      if (k === FAZ1_STORE_PREFIX + kod) { toRemove.push(k); continue; }
-      if (k === FAZ1_DRAFT_STORE_PREFIX + kod) { toRemove.push(k); continue; }
-      if (typeof FAZ2_STORE_PREFIX !== 'undefined' && k === FAZ2_STORE_PREFIX + kod) { toRemove.push(k); continue; }
-      if (typeof SURVEY_STORE_PREFIX !== 'undefined' && (k === SURVEY_STORE_PREFIX + kod + '_pre' || k === SURVEY_STORE_PREFIX + kod + '_post')) { toRemove.push(k); continue; }
+      if (k && hedefler.has(k)) toRemove.push(k);
     }
     toRemove.forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+    try { localStorage.removeItem(GERI_DON_RESUME_KEY); } catch (e) {}
   } catch (e) {}
 }
 
@@ -2621,9 +2636,15 @@ function getActiveParticipantCategoryCode() {
 }
 
 const pcParticipantSelect = document.getElementById('pcParticipantSelect');
+// 18 Eki 2026 (Merve Kaya kararı): Bu dağıtım halkın denemesi için; TEST
+// kodu yalnızca Merve'nin kendi geliştirme testleri içindir ve şimdilik
+// listede görünür ama seçilemez (disabled) bırakılır. Tekrar gerekirse bu
+// sabiti false yapmak yeterlidir.
+const TEST_SECENEGI_KILITLI = true;
 PARTICIPANT_ROSTER.forEach(p => {
   const opt = document.createElement('option');
   opt.value = p.code; opt.textContent = p.code + ' — ' + p.catLabel;
+  if (p.code === 'TEST' && TEST_SECENEGI_KILITLI) { opt.disabled = true; opt.textContent += ' (şu an kapalı)'; }
   pcParticipantSelect.appendChild(opt);
 });
 
@@ -2735,7 +2756,8 @@ function renderAllFaz1Markers() {
 document.getElementById('pcSetBtn').addEventListener('click', () => {
   const code = pcParticipantSelect.value;
   if (!code) { alert('Lütfen listeden bir katılımcı seçin.'); return; }
-  if (code === 'TEST') temizleTestVerileri();
+  if (code === 'TEST' && TEST_SECENEGI_KILITLI) { alert('TEST seçeneği şu an kapalı.'); return; }
+  temizleDenemeVerilerini();
   activeParticipantCode = code;
   faz1Answers = loadFaz1Answers(activeParticipantCode);
   const roster = PARTICIPANT_ROSTER.find(p => p.code === code);
@@ -4603,7 +4625,9 @@ async function linkBaslat() {
   if (secilen && secilen !== sunucu) linkDurumGonder('otomatik'); // bu cihazdaki daha yeni yedek sunucuya taşınır
 }
 
-temizleTestVerileri();
+temizleDenemeVerilerini();
+if (typeof renderPcRosterStatus === 'function') renderPcRosterStatus();
+if (typeof geriDonDevamKutusunuKontrolEt === 'function') geriDonDevamKutusunuKontrolEt();
 
 if (LINK_MODE) {
   window.addEventListener('pagehide', linkKapanisGonder);
