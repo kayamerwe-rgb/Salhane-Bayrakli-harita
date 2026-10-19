@@ -4577,6 +4577,17 @@ function linkTaslagiGeriYukle(taslak) {
   renderFaz1Detail();
 }
 
+// Sol üstteki "DENEME MODU / Gerçek Kayıt: Kilitli" kutusu yalnız düz (linksiz) adres
+// içindir; kişisel linkte yerine gerçek kayıt durumu gösterilir.
+function linkKayitPaneliniGoster() {
+  const el = document.getElementById('recordingModePanel');
+  if (!el) return;
+  const renk = LINK_MODE === 'duzeltme' ? '#e67e22' : (linkCode === 'TEST' ? '#3fa9f5' : '#2ecc71');
+  const yazi = LINK_MODE === 'duzeltme' ? 'DÜZELTME MODU · ' + linkCode
+    : (linkCode === 'TEST' ? 'TEST KAYDI (asıl veriye karışmaz)' : 'GERÇEK KAYIT · ' + linkCode);
+  el.innerHTML = '<div class="rmStatus" style="color:' + renk + '; font-weight:700;">● ' + yazi + '</div>';
+}
+
 function linkHataEkrani(metin) {
   const d = document.createElement('div');
   d.style.cssText = 'position:fixed; inset:0; z-index:9500; background:rgba(5,8,10,0.92); display:flex; align-items:center; justify-content:center; padding:24px;';
@@ -4604,7 +4615,9 @@ async function linkBaslat() {
   let secilen = sunucu;
   if (yerel && (!sunucu || String(yerel.istemciZamani || '') > String(sunucu.istemciZamani || ''))) secilen = yerel;
   if (LINK_MODE === 'duzeltme') secilen = sunucu; // düzeltme her zaman sunucudaki son sürümden başlar
-  linkDurumUygula(secilen);
+  // 19 Eki 2026: sunucuda ve yedekte kayıt yoksa bu cihazdaki (gerçek kayıt alanındaki)
+  // yerel veri silinmez; sayfa yenilense bile o ana kadar yapılanlar korunur ve gönderilir.
+  if (secilen) linkDurumUygula(secilen);
   linkKatilimciyiAyarla(linkCode);
   if (secilen && secilen.mod && secilen.mod !== 'video' && secilen.mod !== 'faz2') {
     const tab = document.querySelector('#modeTabs .modeTabBtn[data-mode="' + secilen.mod + '"]');
@@ -4619,10 +4632,12 @@ async function linkBaslat() {
   if (secilen && secilen.faz1Taslak) linkTaslagiGeriYukle(secilen.faz1Taslak);
   renderAllFaz1Markers();
 
-  const ilk = JSON.stringify(linkDurumTopla());
-  linkSonGonderilen = (secilen === sunucu) ? ilk : '';
-  linkSonOnaylanan = linkSonGonderilen;
+  // 19 Eki 2026: açılışta durum her zaman bir kez gönderilir (ör. otomatik kaydedilen
+  // kilitli seçenekler hemen sunucuya gitsin). Sunucu aynı durumu yeni sürüm saymaz.
+  linkSonGonderilen = '';
+  linkSonOnaylanan = '';
   linkHazir = true;
+  linkKayitPaneliniGoster();
 
   if (LINK_MODE === 'katilimci') {
     if (linkKilitli) { linkKilitliYap(); return; }
