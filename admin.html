@@ -56,7 +56,8 @@
     <div class="satir" style="margin-bottom:8px;">
       <b>Katılımcılar</b>
       <span class="kucuk" id="ozet"></span>
-      <button id="yenileBtn" style="margin-left:auto;">↻ Yenile</button>
+      <button id="dahaBtn" style="margin-left:auto;">KK21–KK60'ı göster</button>
+      <button id="yenileBtn">↻ Yenile</button>
     </div>
     <div class="tablo-kap">
       <table>
@@ -84,6 +85,7 @@
 const API = 'https://script.google.com/macros/s/AKfycbzELoXXBiZnMqcc7-sDlqv68IffMtdj0BXMOEqAf0_eh4NsAZV7bejd9htJG96z0x7N/exec';
 const Y = new URLSearchParams(location.search).get('y') || '';
 let veri = null;
+let tumunuGoster = false;
 
 function mesaj(m) {
   const el = document.getElementById('mesaj');
@@ -129,7 +131,16 @@ function ciz() {
   let basladi = 0, kilitli = 0;
   const g = document.getElementById('govde');
   g.innerHTML = '';
-  veri.katilimcilar.forEach(k => {
+  // 19 Eki 2026: 60 link hazır; varsayılan olarak ilk 20 ve kullanılmaya başlanmış
+  // olanlar gösterilir, "KK21–KK60'ı göster" ile hepsi açılır.
+  const gorunen = veri.katilimcilar.filter((k, i) => tumunuGoster || i < 20 || k.surum > 0 || k.kilitli || k.mod);
+  const dahaBtn = document.getElementById('dahaBtn');
+  if (dahaBtn) {
+    dahaBtn.style.display = veri.katilimcilar.length > 20 ? '' : 'none';
+    dahaBtn.textContent = tumunuGoster ? 'Yalnızca KK1–KK20' : 'KK21–KK' + veri.katilimcilar.length + "'ı göster";
+    dahaBtn.onclick = () => { tumunuGoster = !tumunuGoster; ciz(); };
+  }
+  gorunen.forEach(k => {
     if (k.surum > 0) basladi++;
     if (k.kilitli) kilitli++;
     const tr = document.createElement('tr');
