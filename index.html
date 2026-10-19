@@ -2762,7 +2762,8 @@ function renderAllFaz1Markers() {
 document.getElementById('pcSetBtn').addEventListener('click', () => {
   const code = pcParticipantSelect.value;
   if (!code) { alert('Lütfen listeden bir katılımcı seçin.'); return; }
-  if (code === 'TEST' && TEST_SECENEGI_KILITLI) { alert('TEST seçeneği şu an kapalı.'); return; }
+  // Kişisel TEST linki (?k=) bu kilitten muaftır; kilit yalnız deneme ekranındaki listeyi kapsar.
+  if (code === 'TEST' && TEST_SECENEGI_KILITLI && !(typeof LINK_MODE !== 'undefined' && LINK_MODE)) { alert('TEST seçeneği şu an kapalı.'); return; }
   temizleDenemeVerilerini();
   activeParticipantCode = code;
   faz1Answers = loadFaz1Answers(activeParticipantCode);
