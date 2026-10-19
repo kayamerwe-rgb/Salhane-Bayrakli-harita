@@ -64,7 +64,7 @@
         <thead><tr>
           <th>Kod</th><th>Durum</th><th>Faz 1</th><th>Faz 2</th><th>Son kayıt</th><th>Uygulama modu</th><th>Link</th><th>İşlem</th>
         </tr></thead>
-        <tbody id="govde"></tbody>
+        <tbody id="govde"><tr><td colspan="8" class="kucuk" style="padding:18px 8px;">Sunucudan bilgiler alınıyor… Google sunucusu bir süre kullanılmadıysa ilk açılış 10–30 saniye sürebilir.</td></tr></tbody>
       </table>
     </div>
   </div>
@@ -186,6 +186,8 @@ function ciz() {
 
 async function yukle() {
   if (!Y) { hata('Bu sayfa yalnızca size verilen özel linkle açılır.'); return; }
+  const kd = document.getElementById('kayitDurum');
+  if (kd && !veri) { kd.textContent = 'yükleniyor…'; kd.className = 'rozet kilitli'; }
   try {
     const r = await api({ action: 'panel' });
     if (!r.ok) { hata(r.error === 'yetkisiz' ? 'Link geçersiz.' : 'Hata: ' + r.error); return; }
