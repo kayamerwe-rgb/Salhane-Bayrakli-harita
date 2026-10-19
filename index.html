@@ -4392,13 +4392,14 @@ var linkCode = null;
 var linkKilitli = false;
 var linkHazir = false;
 var linkDuzeltmeGerekcesi = '';
-var linkBekleKadar = 0;      // sunucu kaydı reddettiğinde yeniden denemeden önce beklenecek an
+var linkBekleKadar = 0;
+var linkSifirlama = '';      // sunucudaki sıfırlama damgası (19 Eki 2026)      // sunucu kaydı reddettiğinde yeniden denemeden önce beklenecek an
 let linkSonGonderilen = '';   // sunucuya gönderilmiş son durum (karşılaştırma biçimi)
 let linkSonOnaylanan = '';    // sunucunun "kaydedildi" dediği son durum
 let linkGonderimSuruyor = false;
 
 function linkAuth() {
-  if (LINK_MODE === 'katilimci') return { t: LINK.k };
+  if (LINK_MODE === 'katilimci') return { t: LINK.k, sf: linkSifirlama };
   if (LINK_MODE === 'duzeltme') return { a: LINK.y, kk: LINK.kk, gerekce: linkDuzeltmeGerekcesi };
   return {};
 }
@@ -4475,6 +4476,9 @@ function linkDurumGonder(olay) {
         linkGosterge('Kaydedildi ' + linkSaat());
       } else if (res && res.error === 'kilitli') {
         linkKilitliYap();
+      } else if (res && res.error === 'sifirlandi') {
+        linkHazir = false;
+        linkHataEkrani('Bu oturum araştırmacı tarafından sıfırlandı. Lütfen sayfayı yenileyin.');
       } else if (res && res.error === 'kayit_kapali') {
         linkSonGonderilen = '';
         linkBekleKadar = Date.now() + 60000;
@@ -4607,6 +4611,18 @@ async function linkBaslat() {
   if (!res.ok) { linkHataEkrani('Bu link geçersiz. Lütfen araştırmacıdan size gönderilen linki kullanın.'); return; }
   linkCode = res.kod;
   linkKilitli = !!res.kilitli;
+  // 19 Eki 2026: araştırmacı bu kodu sıfırladıysa, bu cihazdaki eski yerel veriler bırakılır.
+  linkSifirlama = res.sifirlama || '';
+  try {
+    const sifirAnahtar = 'mcp_link_sifirlama_v1_' + linkCode;
+    if (linkSifirlama && localStorage.getItem(sifirAnahtar) !== linkSifirlama) {
+      [FAZ1_STORE_PREFIX, FAZ1_DRAFT_STORE_PREFIX, FAZ2_STORE_PREFIX].forEach(pr => localStorage.removeItem(pr + linkCode));
+      localStorage.removeItem(SURVEY_STORE_PREFIX + linkCode + '_pre');
+      localStorage.removeItem(SURVEY_STORE_PREFIX + linkCode + '_post');
+      localStorage.removeItem(linkYedekAnahtari());
+      localStorage.setItem(sifirAnahtar, linkSifirlama);
+    }
+  } catch (e) {}
 
   // Sunucudaki son sürüm ile bu cihazdaki yedekten daha yeni olanı alınır.
   let yerel = null;
