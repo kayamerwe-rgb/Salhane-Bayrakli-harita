@@ -3637,6 +3637,16 @@ function openSurveyCenterModal() {
   finishBtn.addEventListener('click', () => {
     surveyDraft.submitted = true;
     saveSurveyDraftLocal(activeParticipantCode, surveyApplication, surveyDraft);
+    // 19 Eki 2026: anket bitince yanıtlar POST_Anket sekmesine de satır olarak
+    // gider (oturum durumu kaydına ek olarak). Deneme modunda postToSheets
+    // zaten hiçbir şey göndermez.
+    postToSheets('post', {
+      participantCode: activeParticipantCode,
+      participantCategory: (typeof getActiveParticipantCategoryCode === 'function') ? getActiveParticipantCategoryCode() : '',
+      answers: {},
+      openAnswers: Object.assign({}, surveyDraft.openAnswers || {}),
+      priorities: (surveyDraft.priorities || []).slice(0, 3)
+    });
     document.body.removeChild(backdrop);
     renderSurveyPanel();
     showInfoModal('Anketiniz kaydedildi. Katılımınız için teşekkür ederiz.');
