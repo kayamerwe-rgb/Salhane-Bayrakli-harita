@@ -4616,7 +4616,10 @@ function linkDurumGonder(olay) {
       } else {
         linkSonGonderilen = '';
         linkBekleKadar = Date.now() + 10000;
-        linkGosterge('Kaydedilemedi; birkaç saniye içinde tekrar denenecek', '#e74c3c');
+        // 28 Eki 2026: sunucunun ret gerekçesi ekranda görünsün (tanı için).
+        const neden = (res && (res.error || res.hata || res.message)) || 'yanıt yok';
+        try { console.warn('[kayit] sunucu durumu reddetti:', res); } catch (e) {}
+        linkGosterge('Kaydedilemedi (' + String(neden).slice(0, 80) + '); birkaç saniye içinde tekrar denenecek', '#e74c3c');
       }
     })
     .catch(() => {
