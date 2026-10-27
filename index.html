@@ -9,6 +9,42 @@
 <!-- Yalnızca YouTube'a yüklenmiş (yt alanı dolu) klipler için gerekli; hiçbir
      klip yüklenmediyse bu betik hiç kullanılmaz, harita yerel video ile çalışmaya devam eder. -->
 <script src="https://www.youtube.com/iframe_api"></script>
+<script>
+// 28 Eki 2026: Tarayıcı depolaması yazmayı reddederse (gizli sekme, dolu kota,
+// kısıtlı tarayıcı) kayıtlar sessizce kayboluyordu: katılımcının işaretleri
+// haritada görünmüyor, sunucuya giden oturum durumunda Faz 1 boş kalıyordu.
+// Bu blok, yazılamayan her değeri sayfa açık kaldığı sürece bellekte tutar;
+// okuma önce bellekten yapılır. Böylece işaretler görünür, oturum durumu
+// sunucuya eksiksiz gider. Sorun bir kez fark edildiğinde ekranda uyarı çıkar.
+(function () {
+  try {
+    var P = Storage.prototype, oSet = P.setItem, oGet = P.getItem, oRem = P.removeItem;
+    var mem = Object.create(null), uyarildi = false;
+    function uyar() {
+      if (uyarildi) return; uyarildi = true;
+      var goster = function () {
+        var d = document.createElement('div');
+        d.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#e67e22;color:#fff;font:600 13px system-ui,sans-serif;padding:8px 12px;text-align:center;';
+        d.textContent = 'Bu tarayıcı kalıcı kayda izin vermiyor (gizli sekme olabilir). Yanıtlarınız sunucuya gönderiliyor; lütfen oturum bitene kadar sayfayı kapatmayın ve yenilemeyin.';
+        document.body.appendChild(d);
+      };
+      if (document.body) goster(); else document.addEventListener('DOMContentLoaded', goster);
+    }
+    P.setItem = function (k, v) {
+      try { oSet.call(this, k, v); delete mem[k]; }
+      catch (e) { mem[k] = String(v); uyar(); }
+    };
+    P.getItem = function (k) {
+      if (Object.prototype.hasOwnProperty.call(mem, k)) return mem[k];
+      return oGet.call(this, k);
+    };
+    P.removeItem = function (k) {
+      delete mem[k];
+      try { oRem.call(this, k); } catch (e) {}
+    };
+  } catch (e) {}
+})();
+</script>
 <style>
   :root {
     --bg: #0f1416;
@@ -508,9 +544,9 @@ function renderWelcomeScreen() {
       : '📷';
     const posterAttr = media.photo ? ' poster="' + media.photo + '"' : '';
     const videoHtml = videoSrc
-      ? '<video controls controlsList="nodownload noremoteplayback" disablePictureInPicture oncontextmenu="return false" preload="metadata" playsinline' + posterAttr + ' onplay="handleOptionVideoPlay(this)"><source src="' + videoSrc + '" type="video/mp4">Tarayıcınız video oynatmayı desteklemiyor.</video>'
+      ? '<video muted controls controlsList="nodownload noremoteplayback" disablePictureInPicture oncontextmenu="return false" preload="metadata" playsinline' + posterAttr + ' onvolumechange="if(!this.muted){this.muted=true;}" onplay="handleOptionVideoPlay(this)"><source src="' + videoSrc + '" type="video/mp4">Tarayıcınız video oynatmayı desteklemiyor.</video>'
       : (media.youtubeId
-        ? '<iframe src="https://www.youtube.com/embed/' + media.youtubeId + '" title="' + o.code + ' tanıtım videosu" allow="autoplay; fullscreen" allowfullscreen loading="lazy"></iframe>'
+        ? '<iframe src="https://www.youtube.com/embed/' + media.youtubeId + '?mute=1&cc_load_policy=0&iv_load_policy=3&rel=0&playsinline=1" title="' + o.code + ' tanıtım videosu" allow="autoplay; fullscreen" allowfullscreen loading="lazy"></iframe>'
         : '<div class="welcomeOptVideo">Kısa tanıtım videosu eklenecek</div>');
     card.innerHTML = `
       <div class="welcomeOptPhoto">${photoHtml}</div>
@@ -914,12 +950,13 @@ function playFileYoutube(kind, v, file, offsetSec) {
     }
     const p = new YT.Player(ids.yt, {
       width: '100%', height: '100%', videoId: v.yt,
-      playerVars: { controls: 1, modestbranding: 1, rel: 0, playsinline: 1, mute: 1, start: Math.max(0, Math.round(offsetSec)) },
+      playerVars: { controls: 1, modestbranding: 1, rel: 0, playsinline: 1, mute: 1, cc_load_policy: 0, iv_load_policy: 3, start: Math.max(0, Math.round(offsetSec)) },
       events: {
         onReady: (ev) => {
           ytPlayers[kind] = ev.target;
           document.getElementById(ids.yt).style.display = 'block';
           ev.target.mute();
+          try { ev.target.unloadModule('captions'); ev.target.unloadModule('cc'); } catch (e) {}
           ev.target.seekTo(offsetSec, true);
           ev.target.playVideo();
           beginYtTracking(kind, v);
@@ -1555,10 +1592,11 @@ function addVideoMarker(entry, objectUrl) {
         }
         bmPlayer = new YT.Player(playerDivId, {
           width: '100%', height: '100%', videoId: entry.youtubeId,
-          playerVars: { controls: 1, modestbranding: 1, rel: 0, playsinline: 1, mute: 1 },
+          playerVars: { controls: 1, modestbranding: 1, rel: 0, playsinline: 1, mute: 1, cc_load_policy: 0, iv_load_policy: 3 },
           events: {
             onReady: (ev) => {
               ev.target.mute();
+              try { ev.target.unloadModule('captions'); ev.target.unloadModule('cc'); } catch (e) {}
               applyMediaTransform(document.getElementById(playerDivId) || playerDiv, entry);
             }
           }
@@ -2747,7 +2785,19 @@ function getAllFaz1RecordsAcrossParticipants() {
 
 function renderAllFaz1Markers() {
   faz1AllMarkersLayer.clearLayers();
-  getAllFaz1RecordsAcrossParticipants().forEach(r => {
+  // 28 Eki 2026: aktif katılımcının işaretleri doğrudan bellekteki
+  // yanıtlardan çizilir; tarayıcı depolaması çalışmasa da işaretler görünür.
+  let kayitlar = getAllFaz1RecordsAcrossParticipants();
+  if (activeParticipantCode && faz1Answers && typeof faz1Answers === 'object') {
+    kayitlar = kayitlar.filter(r => r.participantCode !== activeParticipantCode);
+    Object.keys(faz1Answers).forEach(optCode => {
+      const r = faz1Answers[optCode];
+      if (r && !r.notApplicable && typeof r.lat === 'number' && typeof r.lon === 'number') {
+        kayitlar.push({ participantCode: activeParticipantCode, optionCode: optCode, lat: r.lat, lon: r.lon });
+      }
+    });
+  }
+  kayitlar.forEach(r => {
     const icon = L.divIcon({
       className: '',
       html: '<div style="background:#ff7a2f;color:#2a1200;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.5);">' + r.optionCode + '</div>',
@@ -3607,6 +3657,12 @@ function openSurveyCenterModal() {
       rankSelect.appendChild(optEl);
     });
     rankSelect.addEventListener('change', () => {
+      // 28 Eki 2026: aynı müdahale iki ayrı öncelik sırasında seçilemez.
+      if (rankSelect.value && surveyDraft.priorities.some((p, j) => j !== pi && p && p.code === rankSelect.value)) {
+        alert('Bu müdahaleyi başka bir öncelik sırasında zaten seçtiniz. Lütfen farklı bir müdahale seçin.');
+        rankSelect.value = (surveyDraft.priorities[pi] && surveyDraft.priorities[pi].code) || '';
+        return;
+      }
       surveyDraft.priorities[pi] = surveyDraft.priorities[pi] || {};
       surveyDraft.priorities[pi].code = rankSelect.value;
       saveSurveyDraftLocal(activeParticipantCode, surveyApplication, surveyDraft);
@@ -4412,7 +4468,8 @@ function linkDurumTopla() {
   return {
     v: 1,
     kod: c,
-    faz1: loadFaz1Answers(c),
+    // 28 Eki 2026: Faz 1 yanıtları bellekten alınır (depolama yazamasa da gider).
+    faz1: (c === activeParticipantCode && faz1Answers && Object.keys(faz1Answers).length) ? JSON.parse(JSON.stringify(faz1Answers)) : loadFaz1Answers(c),
     faz2: loadFaz2Answers(c),
     anketPre: loadSurveyDraft(c, 'pre'),
     anketPost: loadSurveyDraft(c, 'post'),
