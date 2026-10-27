@@ -491,7 +491,10 @@ function renderIntroOverlay() {
   // tarayıcılarda geçerli bir güvenlik kuralıdır ve kod ile aşılamaz. Bu yüzden
   // sayfaya gelen İLK etkileşimde (istediği yere tek dokunuş/tıklama yeterli),
   // video hâlâ sessizse sesi anında ve kesin olarak açıyoruz.
-  const unlockSoundOnFirstInteraction = () => {
+  // 28 Eki 2026: ilk dokunuş "Sesi Aç" düğmesinin kendisiyse sesi düğme açar;
+  // önceden önce burası sesi açıyor, ardından düğme tekrar kapatıyordu.
+  const unlockSoundOnFirstInteraction = (ev) => {
+    if (ev && ev.target && soundBtn.contains(ev.target)) return;
     if (introEnded || videoEl.ended || !videoEl.muted) return;
     videoEl.muted = false;
     videoEl.play().catch(() => {});
@@ -546,9 +549,11 @@ function renderWelcomeScreen() {
       : '📷';
     const posterAttr = media.photo ? ' poster="' + media.photo + '"' : '';
     const videoHtml = videoSrc
-      ? '<video muted controls controlsList="nodownload noremoteplayback" disablePictureInPicture oncontextmenu="return false" preload="metadata" playsinline' + posterAttr + ' onvolumechange="if(!this.muted){this.muted=true;}" onplay="handleOptionVideoPlay(this)"><source src="' + videoSrc + '" type="video/mp4">Tarayıcınız video oynatmayı desteklemiyor.</video>'
+      // 28 Eki 2026 (Merve Kaya isteği): seçenek tanıtım videoları SESLİ oynar;
+      // ses kapatma yalnızca gezi güzergâhı videoları içindir.
+      ? '<video controls controlsList="nodownload noremoteplayback" disablePictureInPicture oncontextmenu="return false" preload="metadata" playsinline' + posterAttr + ' onplay="handleOptionVideoPlay(this)"><source src="' + videoSrc + '" type="video/mp4">Tarayıcınız video oynatmayı desteklemiyor.</video>'
       : (media.youtubeId
-        ? '<iframe src="https://www.youtube.com/embed/' + media.youtubeId + '?mute=1&cc_load_policy=0&iv_load_policy=3&rel=0&playsinline=1" title="' + o.code + ' tanıtım videosu" allow="autoplay; fullscreen" allowfullscreen loading="lazy"></iframe>'
+        ? '<iframe src="https://www.youtube.com/embed/' + media.youtubeId + '?cc_load_policy=0&iv_load_policy=3&rel=0&playsinline=1" title="' + o.code + ' tanıtım videosu" allow="autoplay; fullscreen" allowfullscreen loading="lazy"></iframe>'
         : '<div class="welcomeOptVideo">Kısa tanıtım videosu eklenecek</div>');
     card.innerHTML = `
       <div class="welcomeOptPhoto">${photoHtml}</div>
