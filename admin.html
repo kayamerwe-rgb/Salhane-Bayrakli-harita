@@ -56,14 +56,15 @@
     <div class="satir" style="margin-bottom:8px;">
       <b>Katılımcılar</b>
       <span class="kucuk" id="ozet"></span>
-      <button id="yenileBtn" style="margin-left:auto;">↻ Yenile</button>
+      <button id="dahaBtn" style="margin-left:auto;">KK21–KK60'ı göster</button>
+      <button id="yenileBtn">↻ Yenile</button>
     </div>
     <div class="tablo-kap">
       <table>
         <thead><tr>
           <th>Kod</th><th>Durum</th><th>Faz 1</th><th>Faz 2</th><th>Son kayıt</th><th>Uygulama modu</th><th>Link</th><th>İşlem</th>
         </tr></thead>
-        <tbody id="govde"></tbody>
+        <tbody id="govde"><tr><td colspan="8" class="kucuk" style="padding:18px 8px;">Sunucudan bilgiler alınıyor… Google sunucusu bir süre kullanılmadıysa ilk açılış 10–30 saniye sürebilir.</td></tr></tbody>
       </table>
     </div>
   </div>
@@ -84,6 +85,7 @@
 const API = 'https://script.google.com/macros/s/AKfycbzELoXXBiZnMqcc7-sDlqv68IffMtdj0BXMOEqAf0_eh4NsAZV7bejd9htJG96z0x7N/exec';
 const Y = new URLSearchParams(location.search).get('y') || '';
 let veri = null;
+let tumunuGoster = false;
 
 function mesaj(m) {
   const el = document.getElementById('mesaj');
@@ -129,7 +131,16 @@ function ciz() {
   let basladi = 0, kilitli = 0;
   const g = document.getElementById('govde');
   g.innerHTML = '';
-  veri.katilimcilar.forEach(k => {
+  // 19 Eki 2026: 60 link hazır; varsayılan olarak ilk 20 ve kullanılmaya başlanmış
+  // olanlar gösterilir, "KK21–KK60'ı göster" ile hepsi açılır.
+  const gorunen = veri.katilimcilar.filter((k, i) => tumunuGoster || i < 20 || k.surum > 0 || k.kilitli || k.mod);
+  const dahaBtn = document.getElementById('dahaBtn');
+  if (dahaBtn) {
+    dahaBtn.style.display = veri.katilimcilar.length > 20 ? '' : 'none';
+    dahaBtn.textContent = tumunuGoster ? 'Yalnızca KK1–KK20' : 'KK21–KK' + veri.katilimcilar.length + "'ı göster";
+    dahaBtn.onclick = () => { tumunuGoster = !tumunuGoster; ciz(); };
+  }
+  gorunen.forEach(k => {
     if (k.surum > 0) basladi++;
     if (k.kilitli) kilitli++;
     const tr = document.createElement('tr');
@@ -147,6 +158,7 @@ function ciz() {
       '<td><div class="satir" style="gap:6px;">' +
         '<button data-kilit="' + k.kod + '">' + (k.kilitli ? 'Kilidi aç' : 'Kilitle') + '</button>' +
         '<button data-duzelt="' + k.kod + '">Düzelt</button>' +
+        (k.surum > 0 ? '<button data-sifirla="' + k.kod + '" title="Deneme kayıtlarını ARSIV_ sekmelerine taşır, kodu boşaltır">Sıfırla</button>' : '') +
       '</div></td>';
     g.appendChild(tr);
     tr.querySelector('select').value = k.mod || '';
@@ -163,6 +175,12 @@ function ciz() {
       if (confirm(k.kod + ' oturumu kilitlenecek; katılımcı artık değişiklik yapamayacak. Emin misiniz?')) islem({ op: 'kilitle', kk: k.kod });
     }
   });
+  g.querySelectorAll('[data-sifirla]').forEach(b => b.onclick = () => {
+    const kod = b.dataset.sifirla;
+    if (!confirm(kod + ' kodunun TÜM kayıtları asıl sekmelerden kaldırılıp ARSIV_ sekmelerine taşınacak; kod yeni bir katılımcı için boşalacak. Link aynı kalır. Önce bu kodun açık sayfalarını kapatın. Emin misiniz?')) return;
+    const gerekce = prompt('Sıfırlama gerekçesi (ör. "deneme oturumu, gerçek katılımcı değil"):', 'deneme oturumu, gerçek katılımcı değil');
+    if (gerekce && gerekce.trim()) islem({ op: 'sifirla', kk: kod, gerekce: gerekce.trim() });
+  });
   g.querySelectorAll('[data-mod]').forEach(s => s.onchange = () => islem({ op: 'mod', kk: s.dataset.mod, deger: s.value }));
 
   const t = veri.test;
@@ -175,6 +193,8 @@ function ciz() {
 
 async function yukle() {
   if (!Y) { hata('Bu sayfa yalnızca size verilen özel linkle açılır.'); return; }
+  const kd = document.getElementById('kayitDurum');
+  if (kd && !veri) { kd.textContent = 'yükleniyor…'; kd.className = 'rozet kilitli'; }
   try {
     const r = await api({ action: 'panel' });
     if (!r.ok) { hata(r.error === 'yetkisiz' ? 'Link geçersiz.' : 'Hata: ' + r.error); return; }
