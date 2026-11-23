@@ -4859,6 +4859,9 @@ if (LINK_MODE) {
   #f2Medya img, #f2Medya video { width:100%; display:block; }
   #f2Medya img { max-height:150px; object-fit:cover; }
   #f2Medya.kucuk img, #f2Medya.kucuk video { display:none; }
+  #f2NA { position:fixed; z-index:1150; bottom:34px; display:none; width:250px; background:#111; color:#fff; border:2px solid #ffe600; border-radius:12px; padding:10px 12px; box-shadow:0 6px 20px rgba(0,0,0,.45); text-align:center; }
+  #f2NA button { width:100%; font-size:20px; font-weight:800; padding:10px; border-radius:10px; border:2px solid #111; background:#ffe600; color:#111; cursor:pointer; }
+  #f2NA .acik { font-size:12.5px; line-height:1.45; color:#d7dde2; margin-top:7px; }
   #f2SesAc { display:none; width:100%; border:0; background:#ffe600; color:#111; font-weight:700; padding:6px; cursor:pointer; }
 </style>
 <div id="f2Hosgeldin"><div class="kart">
@@ -4868,6 +4871,7 @@ if (LINK_MODE) {
   <button id="f2Basla" disabled>Oturumunuz yükleniyor…</button>
 </div></div>
 <div id="f2Serit"></div>
+<div id="f2NA"><button type="button" id="f2NABtn">NA</button><div class="acik"><b>NA</b> = Değerlendiremiyorum ya da bu müdahale bu alana uygulanabilir değil. Noktalardan hiçbiri size uygun değilse buna tıklayın.</div></div>
 <div id="f2Medya"><div class="bas"><span class="kod"></span><span class="ad"></span><button type="button" id="f2Kucult">Küçült</button></div><img alt=""><video controls playsinline controlsList="nodownload noremoteplayback" disablePictureInPicture oncontextmenu="return false"></video><button type="button" id="f2SesAc">🔊 Sesi açmak için tıklayın</button></div>
 <script>
 // faz2.html eklentisi (23 Kasım 2026, Merve Kaya isteği): doğrudan Faz 2 ile açılır,
@@ -4894,6 +4898,15 @@ if (LINK_MODE) {
   const medya = document.getElementById('f2Medya');
   const vid = medya.querySelector('video'), img = medya.querySelector('img'), sesAc = document.getElementById('f2SesAc');
   let sonKod = null;
+  const naKutu = document.getElementById('f2NA');
+  document.getElementById('f2NABtn').addEventListener('click', async () => {
+    if (!faz2Draft || faz2Draft.stage !== 'oy') return;
+    const ok = await faz2OzelOnay('NA seçtiniz (değerlendiremiyorum / uygulanabilir değil). Onaylıyorsanız yanıtınız kaydedilip kilitlenecek ve kısa bir neden sorusuna geçeceğiz.');
+    if (!ok) return;
+    faz2Draft.choice = 'NA';
+    const r = document.querySelector('input[name="faz2choice"][value="NA"]'); if (r) r.checked = true;
+    faz2OyuKilitle();
+  });
   document.getElementById('f2Kucult').addEventListener('click', e => { medya.classList.toggle('kucuk'); e.target.textContent = medya.classList.contains('kucuk') ? 'Büyüt' : 'Küçült'; });
   sesAc.addEventListener('click', () => { vid.muted = false; vid.play().catch(() => {}); sesAc.style.display = 'none'; });
   function medyaGoster(code) {
@@ -4915,25 +4928,27 @@ if (LINK_MODE) {
   function seritGuncelle() {
     const code = faz2Draft && faz2Draft.optionCode;
     const o = DATA.optionCatalog.find(x => x.code === code);
+    naKutu.style.display = (o && currentMode === 'faz2' && faz2Draft.stage === 'oy') ? 'block' : 'none';
     if (!o || currentMode !== 'faz2') { serit.style.display = 'none'; medya.style.display = 'none'; vid.pause(); sonKod = null; return; }
     medyaGoster(code);
     const n = (faz2Candidates[code] && faz2Candidates[code].candidates.length) || 3;
     const done = DATA.optionCatalog.filter(x => faz2Tamam(faz2Answers[x.code])).length;
     if (faz2Draft.stage === 'oy') {
       serit.innerHTML = '<b>' + o.code + ' opsiyonu</b> (' + o.name + ') için haritadaki <b>' + n + ' sarı noktadan birinin</b> üzerine tıklayınız.' +
-        '<div class="alt">Değerlendiremiyorsanız sağ paneldeki NA seçeneğini kullanabilirsiniz · ' + (done + 1) + ' / ' + DATA.optionCatalog.length + '</div><span class="ok">⬇</span>';
+        '<div class="alt">Değerlendiremiyorsanız haritanın sağ alt köşesindeki NA düğmesine tıklayınız · ' + (done + 1) + ' / ' + DATA.optionCatalog.length + '</div><span class="ok">⬇</span>';
     } else if (faz2Draft.stage === 'anlam' || faz2Draft.stage === 'yansima') {
       serit.innerHTML = '<b>' + o.code + ' opsiyonu</b>: ekranın ortasındaki kısa soruyu yanıtlayınız.<div class="alt">' + (done + 1) + ' / ' + DATA.optionCatalog.length + '</div>';
     } else { serit.style.display = 'none'; return; }
     serit.style.display = 'block';
     const mr = document.getElementById('map').getBoundingClientRect();
     serit.style.left = (mr.left + mr.width / 2) + 'px';
+    naKutu.style.right = (window.innerWidth - mr.right + 12) + 'px';
   }
   const _detay = renderFaz2Detail;
   renderFaz2Detail = function () { _detay.apply(this, arguments); seritGuncelle(); };
   const _kapanis = renderFaz2Kapanis;
   renderFaz2Kapanis = function () {
-    serit.style.display = 'none'; medya.style.display = 'none'; vid.pause(); sonKod = null;
+    serit.style.display = 'none'; medya.style.display = 'none'; naKutu.style.display = 'none'; vid.pause(); sonKod = null;
     _kapanis.apply(this, arguments);
     const ex = faz2Answers[FAZ2_KAPANIS_KODU];
     if (ex && ex.asama === 'tamamlandi' && typeof linkDurumGonder === 'function') linkDurumGonder('faz2_bitti');
