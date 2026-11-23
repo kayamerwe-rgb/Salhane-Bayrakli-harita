@@ -567,7 +567,8 @@ function renderWelcomeScreen() {
   });
 }
 renderWelcomeScreen();
-renderIntroOverlay();
+// faz2.html: giriş tanıtım videosu kurulmaz (sesi Faz 2 medyasına karışıyordu).
+document.getElementById('introVideoOverlay').style.display = 'none';
 document.getElementById('welcomeExploreHint').addEventListener('click', () => {
   document.getElementById('welcomeOptionsGrid').scrollIntoView({ behavior: 'smooth', block: 'start' });
 });
@@ -4873,8 +4874,9 @@ if (LINK_MODE) {
 // karşılama + yönlendirme şeridi + sol altta sesli seçenek medyası + bitiş mesajı.
 (function () {
   const ws = document.getElementById('welcomeScreen'); if (ws) ws.style.display = 'none';
+  const wg = document.getElementById('welcomeOptionsGrid'); if (wg) wg.innerHTML = '';
   const iv = document.getElementById('introVideoOverlay');
-  if (iv) { const v = iv.querySelector('video'); if (v) { v.pause(); v.removeAttribute('src'); } iv.style.display = 'none'; }
+  if (iv) { iv.querySelectorAll('video').forEach(v => { v.pause(); v.removeAttribute('src'); v.load(); }); iv.innerHTML = ''; iv.style.display = 'none'; }
   document.querySelectorAll('#modeTabs .modeTabBtn').forEach(b => { if (b.dataset.mode !== 'faz2') b.style.display = 'none'; });
   const fb = document.getElementById('faz2FetchBtn'); if (fb) fb.style.display = 'none';
   const btn = document.getElementById('f2Basla');
