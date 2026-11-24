@@ -58,6 +58,7 @@
       <b>Katılımcılar</b>
       <span class="kucuk" id="ozet"></span>
       <button id="dahaBtn" style="margin-left:auto;">KK21–KK60'ı göster</button>
+      <button id="excelBtn" class="ana">⬇ Faz 2 linklerini Excel'e indir</button>
       <button id="yenileBtn">↻ Yenile</button>
     </div>
     <div class="tablo-kap">
@@ -264,6 +265,26 @@ async function geriYukle() {
   const r2 = await api({ action: 'panel' }).catch(() => null);
   if (r2 && r2.ok) { veri = r2; ciz(); }
 }
+// 24 Kasım 2026 (Merve Kaya isteği): her kodun karşısına Faz 2 linki yazılı Excel dosyası.
+// Dosya tarayıcıda üretilir; linkler hiçbir yere gönderilmez.
+function faz2LinkExcel() {
+  if (!veri || !veri.katilimcilar) { hata('Önce panel verisi yüklenmeli'); return; }
+  const h = (x) => '"' + String(x == null ? '' : x).replace(/"/g, '""') + '"';
+  const satirlar = [['Kod', 'Faz 2 linki', 'Faz 1 (kayıt / 16)', 'Faz 2 (kayıt / 16)', 'Durum'].map(h).join(';')];
+  veri.katilimcilar.forEach(k => {
+    const durum = k.kilitli ? 'Kilitli' : (k.surum > 0 ? 'Açık' : 'Başlamadı');
+    satirlar.push([k.kod, katilimciLinki(k), k.nFaz1, k.nFaz2, durum].map(h).join(';'));
+  });
+  if (veri.test) satirlar.push(['TEST', katilimciLinki(veri.test), '', '', 'Test (analize girmez)'].map(h).join(';'));
+  const blob = new Blob(['\ufeff' + satirlar.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'MCP_Salhane_Faz2_Linkleri_' + new Date().toISOString().slice(0, 10) + '.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  mesaj('Excel dosyası indirildi');
+}
+document.getElementById('excelBtn').onclick = faz2LinkExcel;
 document.getElementById('yenileBtn').onclick = yukle;
 document.getElementById('analizBtn').onclick = () => islem({ op: 'analiz' });
 yukle();
