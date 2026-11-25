@@ -4881,6 +4881,12 @@ if (LINK_MODE) {
   // 25 Kasım 2026: Faz 1 kapanış anketi Faz 2 sayfasında açılmaz (oturum geri yüklenince
   // eski 'anket' modu anketi yeniden açıyor, katılımcı Faz 2 öncesi anketi yeniden gönderiyordu).
   openSurveyCenterModal = function () {};
+  // 25 Kasım 2026: Faz 1 işaretleri ve Faz 1 taslağı Faz 2 için gerekmez; bunlardaki bir hata
+  // (ör. KK24'ün taslağında konumsuz kayıt) oturum yüklemesini durdurup sayfayı
+  // "Oturumunuz yükleniyor…" ekranında bırakıyordu. Hata artık yüklemeyi durdurmaz.
+  const _isaret = renderAllFaz1Markers;
+  renderAllFaz1Markers = function () { try { return _isaret.apply(this, arguments); } catch (e) { try { console.warn('[faz2] Faz 1 işaretleri çizilemedi', e); } catch (x) {} } };
+  linkTaslagiGeriYukle = function () {};
   const wg = document.getElementById('welcomeOptionsGrid'); if (wg) wg.innerHTML = '';
   const iv = document.getElementById('introVideoOverlay');
   if (iv) { iv.querySelectorAll('video').forEach(v => { v.pause(); v.removeAttribute('src'); v.load(); }); iv.innerHTML = ''; iv.style.display = 'none'; }
@@ -4889,6 +4895,7 @@ if (LINK_MODE) {
   const btn = document.getElementById('f2Basla');
   function hazirMi() { return !LINK_MODE || (typeof linkHazir !== 'undefined' && linkHazir); }
   const bekle = setInterval(() => { if (hazirMi()) { clearInterval(bekle); btn.disabled = false; btn.textContent = 'Başlamak için tıklayınız'; } }, 300);
+  setTimeout(() => { if (!hazirMi()) { btn.textContent = 'Oturum yüklenemedi'; const pp = document.querySelector('#f2Hosgeldin p'); if (pp) pp.innerHTML = 'Bağlantı çok yavaş ya da kurulamadı. Lütfen sayfayı yenileyin. Sorun sürerse araştırmacıya bu linki iletin; yanıtlarınız kaybolmaz.'; } }, 45000);
   btn.addEventListener('click', () => {
     document.getElementById('f2Hosgeldin').style.display = 'none';
     if (!activeParticipantCode && !LINK_MODE) { activeParticipantCode = 'TEST'; const pa = document.getElementById('pcActive'); if (pa) pa.textContent = 'Deneme · TEST (kayıt gönderilmez)'; }
