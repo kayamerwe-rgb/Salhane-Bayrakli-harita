@@ -4878,6 +4878,9 @@ if (LINK_MODE) {
 // karşılama + yönlendirme şeridi + sol altta sesli seçenek medyası + bitiş mesajı.
 (function () {
   const ws = document.getElementById('welcomeScreen'); if (ws) ws.style.display = 'none';
+  // 25 Kasım 2026: Faz 1 kapanış anketi Faz 2 sayfasında açılmaz (oturum geri yüklenince
+  // eski 'anket' modu anketi yeniden açıyor, katılımcı Faz 2 öncesi anketi yeniden gönderiyordu).
+  openSurveyCenterModal = function () {};
   const wg = document.getElementById('welcomeOptionsGrid'); if (wg) wg.innerHTML = '';
   const iv = document.getElementById('introVideoOverlay');
   if (iv) { iv.querySelectorAll('video').forEach(v => { v.pause(); v.removeAttribute('src'); v.load(); }); iv.innerHTML = ''; iv.style.display = 'none'; }
